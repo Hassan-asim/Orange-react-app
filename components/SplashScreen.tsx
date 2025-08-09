@@ -12,6 +12,8 @@ const SplashScreen: React.FC = () => {
       <div className="mt-8">
         <div className="w-10 h-10 border-4 border-orange-400 border-t-transparent rounded-full animate-spin"></div>
       </div>
+      <span className="text-xs mt-8 text-gray-400 mt-4">Developed by Shadow League</span>
+
     </div>
   );
 };

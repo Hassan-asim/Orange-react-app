@@ -25,13 +25,29 @@ const Icon: React.FC<IconProps> = ({ name, className = 'w-6 h-6' }) => {
     ),
     translate: (
       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-         <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 21l5.25-11.25L21 21m-9-3h7.5M3 5.621a48.474 48.474 0 016-.371m0 0c1.12 0 2.233.038 3.334.114M9 5.25V3m3.334 2.364C13.18 7.061 14.1 8.25 15 9.75M9 8.25c0 2.828 2.239 5.101 5 5.101M12 12a5.101 5.101 0 00-5-5.101M12 12c-2.828 0-5.101-2.273-5.101-5.101" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 21l5.25-11.25L21 21m-9-3h7.5M3 5.621a48.474 48.474 0 016-.371m0 0c1.12 0 2.233.038 3.334.114M9 5.25V3m3.334 2.364C13.18 7.061 14.1 8.25 15 9.75M9 8.25c0 2.828 2.239 5.101 5 5.101M12 12a5.101 5.101 0 00-5-5.101M12 12c-2.828 0-5.101-2.273-5.101-5.101" />
       </svg>
     ),
     chat: (
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 8.511c.884.284 1.5 1.128 1.5 2.097v4.286c0 1.136-.847 2.1-1.98 2.193l-3.72 3.72a1.125 1.125 0 01-1.59 0l-3.72-3.72c-1.133-.093-1.98-1.057-1.98-2.193v-4.286c0-.97.616-1.813 1.5-2.097m6.75-3.686l-6.75 3.686m6.75 0l-1.125-1.125m1.125 1.125l-1.125 1.125M3.375 4.5c.884.284 1.5 1.128 1.5 2.097v4.286c0 1.136-.847 2.1-1.98 2.193l-3.72 3.72a1.125 1.125 0 01-1.59 0l-3.72-3.72C.847 12.983 0 12.019 0 10.883v-4.286c0-.97.616-1.813 1.5-2.097m1.875 3.686l1.875-1.093m-1.875 1.093l-1.125-1.125m1.125 1.125l-1.125 1.125" />
-        </svg>
+      <svg  xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+       
+        <g id="Vivid.JS" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+          <g id="Vivid-Icons" transform="translate(-668.000000, -409.000000)">
+            <g id="Icons" transform="translate(37.000000, 169.000000)">
+              <g id="chat" transform="translate(624.000000, 234.000000)">
+                <g transform="translate(7.000000, 6.000000)" id="Shape">
+                  <path d="M17,31.765 C13.4557046,31.857522 9.95909276,30.9327036 6.924,29.1 L0,36 L0,15.882 L0.012,15.888 C0.011,15.791 0,15.7 0,15.6 C0,6.369 6.247,0 17,0 C27.753,0 34,6.652 34,15.882 C34,25.112 27.753,31.765 17,31.765 Z" fill="#FF6E6E">
+
+                  </path>
+                  <path d="M24.994,12.99 C26.6508542,12.99 27.994,14.3331458 27.994,15.99 C27.994,17.6468542 26.6508542,18.99 24.994,18.99 C23.3371458,18.99 21.994,17.6468542 21.994,15.99 C21.994,14.3331458 23.3371458,12.99 24.994,12.99 Z M17,13 C18.6568542,13 20,14.3431458 20,16 C20,17.6568542 18.6568542,19 17,19 C15.3431458,19 14,17.6568542 14,16 C14,14.3431458 15.3431458,13 17,13 Z M9,13 C10.6568542,13 12,14.3431458 12,16 C12,17.6568542 10.6568542,19 9,19 C7.34314575,19 6,17.6568542 6,16 C6,14.3431458 7.34314575,13 9,13 Z" fill="#0C0058">
+
+                  </path>
+                </g>
+              </g>
+            </g>
+          </g>
+        </g>
+      </svg>
     ),
     microphone: (
       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
@@ -56,12 +72,12 @@ const Icon: React.FC<IconProps> = ({ name, className = 'w-6 h-6' }) => {
       </svg>
     ),
     'add-friend': (
-        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M19 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zM4 19.235v-.11a6.375 6.375 0 0112.75 0v.109A12.318 12.318 0 0110.5 21h-1.063a12.318 12.318 0 01-5.186-1.765z" />
-        </svg>
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M19 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zM4 19.235v-.11a6.375 6.375 0 0112.75 0v.109A12.318 12.318 0 0110.5 21h-1.063a12.318 12.318 0 01-5.186-1.765z" />
+      </svg>
     ),
     check: (
-       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
       </svg>
     ),

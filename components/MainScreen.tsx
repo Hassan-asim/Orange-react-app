@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { firestore } from '../services/firebase';
 import { User, Chat } from '../types';
 import Icon from './Icon';
+import PIC1 from '@/public/logg.png';
 
 interface MainScreenProps {
   currentUser: User;
@@ -77,8 +78,9 @@ const MainScreen: React.FC<MainScreenProps> = ({ currentUser, onSelectChat }) =>
 
   return (
     <div className="flex flex-col h-full bg-white">
-      <header className="flex items-center justify-between p-4 bg-white dark:bg-charcoal border-b border-gray-200 dark:border-gray-700 shadow-sm">
-        <h1 className="text-xl font-bold text-gray-800 dark:text-white">Chats</h1>
+      <header className="flex items-center  p-4 bg-white dark:bg-charcoal border-b border-gray-200 dark:border-gray-700 shadow-sm">
+        <img src={PIC1} alt="" className="w-12 h-12 rounded-full" />
+        <h1 className="text-xl font-bold text-gray-800 dark:text-white"><span className="text-[#f97316]">Orange</span>Chats</h1>
       </header>
       
       <main className="flex-1 overflow-y-auto">
