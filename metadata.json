@@ -1,0 +1,8 @@
+{
+  "name": "Orange Chat",
+  "description": "A production-ready messenger application with real-time translation powered by the Gemini API. Features include Google authentication, multi-user chat, friend requests, and light/dark themes, all integrated with a Firebase backend.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "prompt": ""
+}
