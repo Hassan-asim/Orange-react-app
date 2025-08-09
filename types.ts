@@ -24,10 +24,11 @@ export interface Message {
   senderUid: string;
   text: string;
   originalText?: string;
+  imageUrl?: string;
   timestamp: any; // Firestore timestamp
   isTranslated: boolean;
   error?: string;
-  type: 'text' | 'voice';
+  type: 'text' | 'voice' | 'image';
 }
 
 export interface Chat {

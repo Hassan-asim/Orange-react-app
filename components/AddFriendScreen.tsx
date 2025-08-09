@@ -140,16 +140,16 @@ const AddFriendScreen: React.FC<AddFriendScreenProps> = ({ currentUser }) => {
       </header>
 
       <main className="flex-1 overflow-y-auto p-4 space-y-6">
-        <div className="bg-white dark:bg-charcoal p-4 rounded-xl shadow-md">
-          <form onSubmit={handleSearch} className="flex gap-2">
+        <div className="bg-white  p-4 rounded-xl shadow-md">
+          <form onSubmit={handleSearch} className=" spacy-y-2">
             <input
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="Search by email"
-              className="flex-1 px-4 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500 text-gray-800 dark:text-white"
+              className="flex-1 px-4 py-2 bg-gray-50 w-full dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-orange-500 text-gray-800 dark:text-white"
             />
-            <button type="submit" className="px-4 py-2 bg-orange-500 text-white font-semibold rounded-md hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500">Search</button>
+            <button type="submit" className="px-4 w-full py-2 bg-orange-500 text-white font-semibold rounded-md hover:bg-orange-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500">Search</button>
           </form>
           {feedback && <p className="text-sm text-center mt-2 text-gray-600 dark:text-gray-400">{feedback}</p>}
           {searchResults.map(user => (

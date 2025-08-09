@@ -1,0 +1,5 @@
+.bg-imgg{
+    background-image: url('/public/bg.jpeg');
+    background-size: cover;
+    background-position: center;
+}

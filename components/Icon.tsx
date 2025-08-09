@@ -1,7 +1,7 @@
 import React from 'react';
 
 interface IconProps {
-  name: 'send' | 'settings' | 'back' | 'translate' | 'chat' | 'microphone' | 'play' | 'pause' | 'logout' | 'add-friend' | 'check' | 'close' | 'user-profile';
+  name: 'send' | 'settings' | 'back' | 'translate' | 'chat' | 'microphone' | 'play' | 'pause' | 'logout' | 'add-friend' | 'check' | 'close' | 'user-profile' | 'image';
   className?: string;
 }
 
@@ -73,6 +73,11 @@ const Icon: React.FC<IconProps> = ({ name, className = 'w-6 h-6' }) => {
     'user-profile': (
       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+      </svg>
+    ),
+    image: (
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M18 12v4.75A2.25 2.25 0 0 1 15.75 19H8.25A2.25 2.25 0 0 1 6 16.75V12m12 0V8.25A2.25 2.25 0 0 0 15.75 6H8.25A2.25 2.25 0 0 0 6 8.25V12m12 0H6" />
       </svg>
     ),
   };

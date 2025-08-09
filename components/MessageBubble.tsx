@@ -55,6 +55,17 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({ message, isSender, recipi
       <div className={`rounded-xl px-4 py-2 max-w-xs md:max-w-md ${bubbleColor}`}>
         {message.error ? (
           <p className="text-red-300 italic">{message.error}</p>
+        ) : message.type === 'image' && message.imageUrl ? (
+          <div className="flex flex-col">
+            <img 
+              src={message.imageUrl} 
+              alt="Sent image" 
+              className="rounded-lg max-w-full h-auto mb-2 cursor-pointer"
+              onClick={() => window.open(message.imageUrl, '_blank')}
+              style={{ maxHeight: '200px', objectFit: 'contain' }}
+            />
+            {message.text && <p className="break-words">{displayedText}</p>}
+          </div>
         ) : (
           <div className="flex items-center gap-2">
             {message.type === 'voice' && (

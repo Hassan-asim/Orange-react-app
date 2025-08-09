@@ -1,6 +1,7 @@
 import React from 'react';
 import { auth, googleProvider } from '../services/firebase';
 import Icon from './Icon';
+import PIC1 from '@/public/logg.png'
 
 interface LoginScreenProps {
   onLoginSuccess: () => void;
@@ -22,9 +23,10 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, onLoginFailur
   return (
     <div className="flex flex-col items-center justify-center h-full bg-gray-100 dark:bg-charcoal p-4">
       <div className="text-center mb-10">
-        <Icon name="chat" className="w-20 h-20 text-orange-500 mx-auto" />
-        <h1 className="text-4xl font-bold text-gray-800 dark:text-white mt-4">Orange Chat</h1>
-        <p className="text-gray-600 dark:text-gray-300 mt-2">Connect and translate instantly.</p>
+        {/* <Icon name="chat" className="w-20 h-20 text-orange-500 mx-auto" /> */}
+        <img src={PIC1} alt="Logo" className="w-20 h-20 mx-auto mb-4" />
+        <h1 className="text-4xl font-bold text-[#FF7B00] mt-4">Orange Chat</h1>
+        <p className="text-gray-800 mt-2">Connect and translate instantly.</p>
       </div>
       <div className="w-full max-w-sm">
         <button

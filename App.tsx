@@ -153,9 +153,9 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-200 dark:bg-gray-900 p-0 sm:p-4">
+    <div className="flex items-center justify-center min-h-screen bg-imgg p-0 sm:p-4">
       <div className="w-full h-full sm:max-w-sm sm:h-[85vh] sm:max-h-[900px] bg-white dark:bg-charcoal sm:rounded-3xl shadow-2xl overflow-hidden sm:border-8 border-black relative">
-        <div className="hidden sm:block absolute top-0 left-1/2 -translate-x-1/2 w-1/3 h-6 bg-black rounded-b-xl z-20"></div>
+        {/* <div className="hidden sm:block absolute top-0 left-1/2 -translate-x-1/2 w-1/3 h-6 bg-black rounded-b-xl z-20"></div> */}
         {renderScreen()}
       </div>
     </div>

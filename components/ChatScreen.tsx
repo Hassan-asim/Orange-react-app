@@ -5,6 +5,7 @@ import MessageBubble from './MessageBubble';
 import Icon from './Icon';
 import { LANGUAGES } from '../constants';
 import { firestore, serverTimestamp } from '../services/firebase';
+import EmojiPicker from 'emoji-picker-react';
 
 interface ChatScreenProps {
   currentUser: User;
@@ -20,7 +21,10 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ currentUser, chat, onBack }) =>
   const [messages, setMessages] = useState<Message[]>([]);
   const [isSending, setIsSending] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const emojiPickerRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const otherUser = chat.participantDetails.find(p => p.uid !== currentUser.uid);
 
@@ -67,7 +71,10 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ currentUser, chat, onBack }) =>
       type: type,
     };
     
-    const needsTranslation = currentUser.language !== otherUser.language;
+    // Check if message contains only emojis/symbols (no alphabetic characters)
+    const hasAlphabeticText = /[a-zA-Z\u00C0-\u017F\u0100-\u024F\u1E00-\u1EFF\u4E00-\u9FFF\u3040-\u309F\u30A0-\u30FF\u0590-\u05FF\u0600-\u06FF\u0900-\u097F\u0980-\u09FF\uAC00-\uD7AF]/.test(trimmedMessage);
+    
+    const needsTranslation = currentUser.language !== otherUser.language && hasAlphabeticText;
     if (needsTranslation) {
         const targetLanguageDetails = LANGUAGES.find(l => l.code === otherUser.language);
         if(targetLanguageDetails) {
@@ -109,6 +116,96 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ currentUser, chat, onBack }) =>
   const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') handleSendText();
   };
+
+  const handleEmojiClick = (emojiData: any) => {
+    setNewMessage(prev => prev + emojiData.emoji);
+    setShowEmojiPicker(false);
+  };
+
+  const handleImageSelect = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Check if file is an image
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file');
+      return;
+    }
+
+    // Check file size (limit to 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      alert('Image size should be less than 5MB');
+      return;
+    }
+
+    setIsSending(true);
+
+    try {
+      // Convert image to base64
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const base64String = reader.result as string;
+        
+        const imageMessage: Omit<Message, 'id' | 'timestamp'> & { timestamp: any } = {
+          senderUid: currentUser.uid,
+          text: '', // Empty text for image messages
+          imageUrl: base64String,
+          timestamp: serverTimestamp(),
+          isTranslated: false,
+          type: 'image',
+        };
+
+        try {
+          const messagesCollectionRef = firestore.collection('chats').doc(chat.id).collection('messages');
+          const chatRef = firestore.collection('chats').doc(chat.id);
+
+          await messagesCollectionRef.add(imageMessage);
+          
+          await chatRef.update({
+            lastMessage: {
+              text: '📷 Image', // Show image indicator in chat list preview
+              timestamp: serverTimestamp()
+            }
+          });
+        } catch (error) {
+          console.error("Error sending image:", error);
+          alert('Failed to send image');
+        }
+      };
+      
+      reader.readAsDataURL(file);
+    } catch (error) {
+      console.error("Error processing image:", error);
+      alert('Failed to process image');
+    } finally {
+      setIsSending(false);
+      // Reset the file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  // Close emoji picker when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (emojiPickerRef.current && !emojiPickerRef.current.contains(event.target as Node)) {
+        setShowEmojiPicker(false);
+      }
+    };
+
+    if (showEmojiPicker) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showEmojiPicker]);
 
   // --- Voice Recording Handlers ---
   const handleStartRecording = () => {
@@ -173,7 +270,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ currentUser, chat, onBack }) =>
         <div ref={messagesEndRef} />
       </main>
 
-      <footer className="p-3 bg-white dark:bg-charcoal border-t border-gray-200 dark:border-gray-700">
+      <footer className="p-3 bg-white dark:bg-charcoal border-t border-gray-200 dark:border-gray-700 relative">
         <div className="flex items-center">
           <input
             type="text"
@@ -184,7 +281,25 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ currentUser, chat, onBack }) =>
             className="flex-1 w-full px-4 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-full focus:outline-none focus:ring-2 focus:ring-orange-400 text-gray-800 dark:text-white"
             disabled={isSending || isRecording}
           />
-          <div className="ml-3">
+          <div className="ml-3 flex items-center space-x-2">
+             {/* Image Button */}
+             <button 
+                onClick={handleImageSelect}
+                disabled={isSending || isRecording}
+                className="p-3 bg-blue-500 dark:bg-blue-600 text-white rounded-full shadow-md hover:bg-blue-600 dark:hover:bg-blue-500 disabled:bg-blue-300 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-opacity-75 transition-transform transform active:scale-95"
+                aria-label="Send image">
+                <Icon name="image" className="w-6 h-6"/>
+             </button>
+             
+             {/* Emoji Button */}
+             <button 
+                onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+                disabled={isSending || isRecording}
+                className="p-3 bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300 rounded-full shadow-md hover:bg-gray-300 dark:hover:bg-gray-500 disabled:bg-gray-100 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-opacity-75 transition-transform transform active:scale-95"
+                aria-label="Add emoji">
+                <span className="text-xl">😊</span>
+             </button>
+             
              {newMessage.trim() === '' && !isRecording && recognition ? (
                  <button onMouseDown={handleStartRecording} onMouseUp={handleStopRecording} onTouchStart={handleStartRecording} onTouchEnd={handleStopRecording} disabled={isSending}
                     className="p-3 bg-orange-500 text-white rounded-full shadow-md hover:bg-orange-600 disabled:bg-orange-300 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-orange-400 focus:ring-opacity-75 transition-transform transform active:scale-95"
@@ -200,6 +315,26 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ currentUser, chat, onBack }) =>
              )}
           </div>
         </div>
+        
+        {/* Hidden file input */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          onChange={handleFileChange}
+          className="hidden"
+        />
+        
+        {/* Emoji Picker */}
+        {showEmojiPicker && (
+          <div ref={emojiPickerRef} className="absolute bottom-16 right-3 z-50">
+            <EmojiPicker
+              onEmojiClick={handleEmojiClick}
+              autoFocusSearch={false}
+            />
+          </div>
+        )}
+        
         { (isSending || isRecording) && <p className="text-xs text-center text-gray-500 mt-2">{isRecording ? 'Recording...' : 'Sending...'}</p> }
         {!recognition && <p className="text-xs text-center text-red-500 mt-2">Voice recognition is not supported by your browser.</p>}
       </footer>

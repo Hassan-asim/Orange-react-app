@@ -76,7 +76,7 @@ const MainScreen: React.FC<MainScreenProps> = ({ currentUser, onSelectChat }) =>
   );
 
   return (
-    <div className="flex flex-col h-full bg-gray-50 dark:bg-gray-800">
+    <div className="flex flex-col h-full bg-white">
       <header className="flex items-center justify-between p-4 bg-white dark:bg-charcoal border-b border-gray-200 dark:border-gray-700 shadow-sm">
         <h1 className="text-xl font-bold text-gray-800 dark:text-white">Chats</h1>
       </header>
