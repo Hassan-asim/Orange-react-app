@@ -1,10 +1,5 @@
-"use client"
-
-import type React from "react"
-
-import { useState } from "react"
-// import Head from "next/head"
-import PIC1 from '@/public/logg.png'
+import React, { useState } from "react"
+import { useNavigate } from 'react-router-dom'
 
 // Sample chat messages with translations
 const chatMessages = [
@@ -61,6 +56,7 @@ const userLanguages = {
 }
 
 export default function OrangeChatLanding() {
+    const navigate = useNavigate()
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
     const [email, setEmail] = useState("")
     const [emailError, setEmailError] = useState("")
@@ -92,8 +88,11 @@ export default function OrangeChatLanding() {
         setEmailSuccess(true)
         setEmail("")
 
-        // Reset success message after 5 seconds
-        setTimeout(() => setEmailSuccess(false), 5000)
+        // Navigate to chat app after a short delay
+        setTimeout(() => {
+            setEmailSuccess(false)
+            navigate('/chat')
+        }, 2000)
     }
 
     const toggleOriginal = (messageId: number) => {
@@ -105,6 +104,10 @@ export default function OrangeChatLanding() {
 
     const scrollToDemo = () => {
         document.getElementById("demo")?.scrollIntoView({ behavior: "smooth" })
+    }
+
+    const handleGetStarted = () => {
+        navigate('/chat')
     }
 
     return (
@@ -132,7 +135,7 @@ export default function OrangeChatLanding() {
                             <div className="flex items-center">
                                 <div className="flex-shrink-0 flex items-center">
                                     {/* Orange Chat Logo */}
-                                    <img src={PIC1} className="h-8 w-8" alt="" />
+                                    <img src="/logg.png" className="h-8 w-8" alt="" />
                                     <span className="ml-2 text-xl font-bold text-gray-900">Orange Chat</span>
                                 </div>
                             </div>
@@ -158,11 +161,12 @@ export default function OrangeChatLanding() {
                                     >
                                         Pricing
                                     </a>
-                                    <a href="/chat"
+                                    <button 
+                                        onClick={handleGetStarted}
                                         className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2"
                                     >
                                         Get Started
-                                    </a>
+                                    </button>
                                 </div>
                             </div>
 
@@ -208,12 +212,12 @@ export default function OrangeChatLanding() {
                                 >
                                     Pricing
                                 </a>
-                                <a
-                                   href="/chat"
+                                <button
+                                   onClick={handleGetStarted}
                                     className="w-full text-left bg-orange-500 hover:bg-orange-600 text-white block px-3 py-2 rounded-md text-base font-medium transition-colors"
                                 >
                                     Get Started
-                                </a>
+                                </button>
                             </div>
                         </div>
                     )}
@@ -245,11 +249,12 @@ export default function OrangeChatLanding() {
                             </p>
 
                             <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                                <a href="/chat"
+                                <button 
+                                    onClick={handleGetStarted}
                                     className="bg-orange-500 hover:bg-orange-600 text-white px-8 py-4 rounded-lg text-lg font-semibold transition-all transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2"
                                 >
                                     Get Started
-                                </a>
+                                </button>
                                 <button
                                     onClick={scrollToDemo}
                                     className="border-2 border-gray-300 hover:border-gray-400 text-gray-700 px-8 py-4 rounded-lg text-lg font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2"
@@ -555,9 +560,12 @@ export default function OrangeChatLanding() {
                                         Basic support
                                     </li>
                                 </ul>
-                                <a href="/chat" className="w-full border-2 border-gray-300 text-gray-700 py-2 px-4 rounded-md hover:border-gray-400 transition-colors focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2">
+                                <button 
+                                    onClick={handleGetStarted}
+                                    className="w-full border-2 border-gray-300 text-gray-700 py-2 px-4 rounded-md hover:border-gray-400 transition-colors focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2"
+                                >
                                     Get Started
-                                </a>
+                                </button>
                             </div>
 
                             {/* Pro Tier */}
