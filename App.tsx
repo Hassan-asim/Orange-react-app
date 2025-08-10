@@ -3,15 +3,19 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { useTheme } from './hooks/useTheme';
 import LandingPage from './components/LandingPage';
 import ChatApp from './components/ChatApp';
+import OfflineIndicator from './components/OfflineIndicator';
 
 const App: React.FC = () => {
   return (
-    <Router>
-      <Routes>
-        <Route path="/" element={<LandingPage />} />
-        <Route path="/chat" element={<ChatApp />} />
-      </Routes>
-    </Router>
+    <>
+      <OfflineIndicator />
+      <Router>
+        <Routes>
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/chat" element={<ChatApp />} />
+        </Routes>
+      </Router>
+    </>
   );
 };
 

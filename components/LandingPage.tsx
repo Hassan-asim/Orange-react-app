@@ -1,5 +1,6 @@
 import React, { useState } from "react"
 import { useNavigate } from 'react-router-dom'
+import InstallPWAButton from './InstallPWAButton'
 
 // Sample chat messages with translations
 const chatMessages = [
@@ -261,6 +262,7 @@ export default function OrangeChatLanding() {
                                 >
                                     Try Demo
                                 </button>
+                                <InstallPWAButton className="border-2 border-orange-500 hover:bg-orange-500 hover:text-white text-orange-500 px-8 py-4 rounded-lg text-lg font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2" />
                             </div>
                         </div>
                     </div>
