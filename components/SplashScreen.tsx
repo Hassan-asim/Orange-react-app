@@ -1,5 +1,5 @@
 import React from 'react';
-import PIC1 from '@/public/logg.png'
+import PIC1 from '/logg.png'
 
 import Icon from './Icon';
 

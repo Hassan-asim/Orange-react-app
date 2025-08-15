@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { firestore } from '../services/firebase';
 import { User, Chat } from '../types';
 import Icon from './Icon';
-import PIC1 from '@/public/logg.png';
+import PIC1 from '/logg.png';
 
 interface MainScreenProps {
   currentUser: User;
