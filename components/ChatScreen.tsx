@@ -1,11 +1,14 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { User, Message, Chat } from '../types';
-import { translateText } from '../services/geminiService';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { modularDb } from '../services/firebase';
+import { User, Chat, Message } from '../types';
+import { collection, addDoc, doc, updateDoc, serverTimestamp, onSnapshot, query, orderBy, limit } from 'firebase/firestore';
 import MessageBubble from './MessageBubble';
 import Icon from './Icon';
+import OrangeIcon from './OrangeIcon';
 import { LANGUAGES } from '../constants';
-import { firestore, serverTimestamp } from '../services/firebase';
+import { translateText } from '../services/geminiService';
 import EmojiPicker from 'emoji-picker-react';
+import { listenForIncomingCall, startCall, answerCall, onCallStatusChange, endCall, cancelCall, logMissedCall, logDeclinedCall } from '../services/webrtcService';
 
 interface ChatScreenProps {
   currentUser: User;
@@ -25,6 +28,24 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ currentUser, chat, onBack }) =>
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const localAudioRef = useRef<HTMLAudioElement>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement>(null);
+  const localVideoRef = useRef<HTMLVideoElement>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement>(null);
+
+  const [callStatus, setCallStatus] = useState<'idle' | 'ringing' | 'active'>('idle');
+  const callCleanupRef = useRef<null | (() => Promise<void>)>(null);
+  const callStopRef = useRef<null | (() => Promise<void>)>(null);
+  const [isIncoming, setIsIncoming] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [callStartedAt, setCallStartedAt] = useState<number | null>(null);
+  const [callDuration, setCallDuration] = useState<string>('00:00');
+  const [connectionQuality, setConnectionQuality] = useState<'excellent' | 'good' | 'poor' | 'unknown'>('unknown');
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [callType, setCallType] = useState<'audio' | 'video'>('audio');
+  const [isVideoEnabled, setIsVideoEnabled] = useState(true);
+  const [permissionStatus, setPermissionStatus] = useState<{audio: boolean, video: boolean}>({audio: false, video: false});
+  const ringtoneRef = useRef<HTMLAudioElement | null>(null);
 
   const otherUser = chat.participantDetails.find(p => p.uid !== currentUser.uid);
 
@@ -37,16 +58,128 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ currentUser, chat, onBack }) =>
   // Listen for new messages
   useEffect(() => {
     if (!chat) return;
-    const messagesCollectionRef = firestore.collection('chats').doc(chat.id).collection('messages');
-    const q = messagesCollectionRef.orderBy('timestamp', 'asc');
+    const messagesCollectionRef = collection(modularDb, 'chats', chat.id, 'messages');
+    const q = query(messagesCollectionRef, orderBy('timestamp', 'asc'));
 
-    const unsubscribe = q.onSnapshot((querySnapshot) => {
+    const unsubscribe = onSnapshot(q, (querySnapshot) => {
         const msgs = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message));
         setMessages(msgs);
     });
     
     return () => unsubscribe();
   }, [chat]);
+
+  // Create ringtone audio element
+  useEffect(() => {
+    ringtoneRef.current = new Audio('data:audio/wav;base64,UklGRvIBAABXQVZFZm10IBAAAAABAAEALQAAAC0AAAEEAAEAZGF0YU4BAAAnLCgqKCgpKykpKCkpKCgqKygpKCgpKSgpKCopKClWVVNJRE9JUVZSUVRQUVVQTFBTVVVTUVNQUVZSU01OTFBTUURRSE5JTlFOUE5QUU5PUFRYU1dQVFJQUlVRVFBUV1VdWVdXWFleWFVaXFxVV1lTWlpdW1pYWldXWVlYWl1YW1tbV1taVFldV1laW1pSW1pWVlNVU1NXVlNVVlhWU1ZWUlVUVE9SU1FTU1VVTlRQUFNVTlRTT1JRUFFVU1JRUlFSUU9OTk9QTU5OT05PTU5QTU1NTEtLS0xMTUtKTExLSktKSklKS0tJSEhJSEhISEdIR0hHRkZHRkZFRERERERDQkNDQ0NCQkJCQUFAQUBAQD8/Pz8+Pj4+PT09PT09Oz08Oz08PTw7Pjs7OjuwIR');
+    ringtoneRef.current.loop = true;
+    return () => {
+      if (ringtoneRef.current) {
+        ringtoneRef.current.pause();
+        ringtoneRef.current = null;
+      }
+    };
+  }, []);
+
+  // Play/stop ringtone based on call status
+  useEffect(() => {
+    if (callStatus === 'ringing' && isIncoming && ringtoneRef.current) {
+      ringtoneRef.current.play().catch(() => {});
+    } else if (ringtoneRef.current) {
+      ringtoneRef.current.pause();
+      ringtoneRef.current.currentTime = 0;
+    }
+  }, [callStatus, isIncoming]);
+
+  // Listen for incoming WebRTC calls
+  useEffect(() => {
+         const unsub1 = listenForIncomingCall(chat.id, currentUser.uid, ({ callType: incomingCallType }) => {
+       setIsIncoming(true);
+       setCallStatus('ringing');
+       setCallType(incomingCallType);
+       
+       // Request notification permission if not already granted
+       if (Notification.permission === 'default') {
+         Notification.requestPermission();
+       }
+       
+       // Show browser notification
+       if (Notification.permission === 'granted') {
+         new Notification(`Incoming ${incomingCallType} call from ${otherUser?.name || 'Unknown'}`, {
+           icon: '/icon-192x192.png',
+           tag: 'incoming-call'
+         });
+       }
+     }, () => {
+       // Call cancelled callback
+       console.log('Incoming call was cancelled');
+       setCallStatus('idle');
+       setIsIncoming(false);
+       setIsConnecting(false);
+       setConnectionQuality('unknown');
+       setCallStartedAt(null);
+       setIsMuted(false);
+       
+       // Stop ringtone
+       if (ringtoneRef.current) {
+         ringtoneRef.current.pause();
+         ringtoneRef.current.currentTime = 0;
+       }
+     });
+    
+         const unsub2 = onCallStatusChange(chat.id, (doc) => {
+       if (!doc) {
+         setCallStatus('idle');
+         setIsIncoming(false);
+         setConnectionQuality('unknown');
+         return;
+       }
+       if (doc.status === 'ended' || doc.status === 'cancelled') {
+         console.log('Call ended/cancelled remotely, cleaning up locally');
+         void handleHangup();
+       }
+     }, () => {
+       // Callback for when call is ended remotely
+       console.log('Call ended callback triggered');
+       void handleHangup();
+     });
+    
+    return () => {
+      unsub1 && unsub1();
+      unsub2 && unsub2();
+    };
+  }, [chat.id, currentUser.uid, otherUser?.name]);
+
+  // Check permissions on mount - simplified approach
+  useEffect(() => {
+    const checkInitialPermissions = async () => {
+      try {
+        // Test audio permission
+        try {
+          const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          audioStream.getTracks().forEach(track => track.stop());
+          setPermissionStatus(prev => ({ ...prev, audio: true }));
+        } catch (error) {
+          console.log('Audio permission not granted');
+          setPermissionStatus(prev => ({ ...prev, audio: false }));
+        }
+
+        // Test video permission
+        try {
+          const videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
+          videoStream.getTracks().forEach(track => track.stop());
+          setPermissionStatus(prev => ({ ...prev, video: true }));
+        } catch (error) {
+          console.log('Video permission not granted');
+          setPermissionStatus(prev => ({ ...prev, video: false }));
+        }
+      } catch (error) {
+        console.warn('Failed to check permissions:', error);
+      }
+    };
+    
+    checkInitialPermissions();
+  }, []);
 
   if (!otherUser) {
       return (
@@ -59,44 +192,25 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ currentUser, chat, onBack }) =>
 
   const handleSend = async (text: string, type: 'text' | 'voice') => {
     const trimmedMessage = text.trim();
-    if (!trimmedMessage || isSending) return;
+    if (!trimmedMessage) return;
 
     setIsSending(true);
-
-    const userMessage: Omit<Message, 'id' | 'timestamp'> & { timestamp: any } = {
+    
+    const userMessage: Omit<Message, 'id' | 'timestamp'> = {
       senderUid: currentUser.uid,
       text: trimmedMessage,
-      timestamp: serverTimestamp(),
+      originalText: trimmedMessage,
       isTranslated: false,
-      type: type,
+      type
     };
     
-    // Check if message contains only emojis/symbols (no alphabetic characters)
-    const hasAlphabeticText = /[a-zA-Z\u00C0-\u017F\u0100-\u024F\u1E00-\u1EFF\u4E00-\u9FFF\u3040-\u309F\u30A0-\u30FF\u0590-\u05FF\u0600-\u06FF\u0900-\u097F\u0980-\u09FF\uAC00-\uD7AF]/.test(trimmedMessage);
-    
-    const needsTranslation = currentUser.language !== otherUser.language && hasAlphabeticText;
-    if (needsTranslation) {
-        const targetLanguageDetails = LANGUAGES.find(l => l.code === otherUser.language);
-        if(targetLanguageDetails) {
-            try {
-                const translatedText = await translateText(trimmedMessage, targetLanguageDetails);
-                userMessage.text = translatedText; // Recipient sees translated text
-                userMessage.originalText = trimmedMessage; // Store original
-                userMessage.isTranslated = true;
-            } catch(e) {
-                console.error("Translation failed", e);
-                userMessage.error = "Translation failed.";
-            }
-        }
-    }
-    
     try {
-        const messagesCollectionRef = firestore.collection('chats').doc(chat.id).collection('messages');
-        const chatRef = firestore.collection('chats').doc(chat.id);
+        const messagesCollectionRef = collection(modularDb, 'chats', chat.id, 'messages');
+        const chatRef = doc(modularDb, 'chats', chat.id);
 
-        await messagesCollectionRef.add(userMessage);
+        await addDoc(messagesCollectionRef, userMessage);
         
-        await chatRef.update({
+        await updateDoc(chatRef, {
             lastMessage: {
                 text: trimmedMessage, // Show original in chat list preview
                 timestamp: serverTimestamp()
@@ -111,7 +225,30 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ currentUser, chat, onBack }) =>
     }
   };
   
-  const handleSendText = () => handleSend(newMessage, 'text');
+  const handleSendText = () => {
+    const text = newMessage.trim();
+    if (text === '/call') {
+      void handleStartCall('audio');
+      setNewMessage('');
+      return;
+    }
+    if (text === '/videocall') {
+      void handleStartCall('video');
+      setNewMessage('');
+      return;
+    }
+    if (text === '/answer') {
+      void handleAnswerCall();
+      setNewMessage('');
+      return;
+    }
+    if (text === '/hangup') {
+      void handleHangup();
+      setNewMessage('');
+      return;
+    }
+    handleSend(newMessage, 'text');
+  };
   
   const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') handleSendText();
@@ -160,12 +297,12 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ currentUser, chat, onBack }) =>
         };
 
         try {
-          const messagesCollectionRef = firestore.collection('chats').doc(chat.id).collection('messages');
-          const chatRef = firestore.collection('chats').doc(chat.id);
+          const messagesCollectionRef = collection(modularDb, 'chats', chat.id, 'messages');
+          const chatRef = doc(modularDb, 'chats', chat.id);
 
-          await messagesCollectionRef.add(imageMessage);
+          await addDoc(messagesCollectionRef, imageMessage);
           
-          await chatRef.update({
+          await updateDoc(chatRef, {
             lastMessage: {
               text: '📷 Image', // Show image indicator in chat list preview
               timestamp: serverTimestamp()
@@ -228,6 +365,387 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ currentUser, chat, onBack }) =>
     recognition.onend = () => setIsRecording(false);
     return () => { if (recognition) recognition.abort(); }
   }, [currentUser.language, otherUser?.language, chat.id]);
+
+  // --- WebRTC Call Handlers ---
+  const checkAndRequestPermissions = async (callType: 'audio' | 'video'): Promise<{ success: boolean; error?: string }> => {
+    try {
+      console.log(`Checking permissions for ${callType} call...`);
+      
+      // Check if we're in a secure context
+      if (!window.isSecureContext) {
+        return { 
+          success: false, 
+          error: 'WebRTC requires HTTPS. Please access the site using https:// or localhost.' 
+        };
+      }
+      
+      // Check if getUserMedia is available
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        return { 
+          success: false, 
+          error: 'Your browser does not support media access. Please use a modern browser like Chrome, Firefox, or Safari.' 
+        };
+      }
+      
+      const constraints = callType === 'video' 
+        ? { audio: true, video: true }
+        : { audio: true };
+      
+      console.log('Requesting media with constraints:', constraints);
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      console.log('Permission granted, stream obtained:', stream);
+      
+      // Clean up immediately
+      stream.getTracks().forEach(track => {
+        track.stop();
+        console.log(`Stopped track: ${track.kind}`);
+      });
+      
+      // Update permission status after successful access
+      setPermissionStatus(prev => ({
+        audio: true,
+        video: callType === 'video' ? true : prev.video
+      }));
+      
+      return { success: true };
+    } catch (error) {
+      console.error('Media permission error:', error);
+      
+      let errorMessage = 'Unknown error occurred';
+      
+      if (error instanceof Error) {
+        switch (error.name) {
+          case 'NotAllowedError':
+            errorMessage = 'Permission denied. Please click "Allow" when prompted for camera/microphone access.';
+            break;
+          case 'NotFoundError':
+            errorMessage = `No ${callType === 'video' ? 'camera' : 'microphone'} found. Please check your device connections.`;
+            break;
+          case 'NotReadableError':
+            errorMessage = `${callType === 'video' ? 'Camera' : 'Microphone'} is being used by another application. Please close other apps using your camera/microphone.`;
+            break;
+          case 'OverconstrainedError':
+            errorMessage = 'Your device does not support the required camera/microphone settings.';
+            break;
+          case 'SecurityError':
+            errorMessage = 'Security error. Please make sure you are using HTTPS and try again.';
+            break;
+          default:
+            errorMessage = `Error accessing ${callType === 'video' ? 'camera/microphone' : 'microphone'}: ${error.message}`;
+        }
+      }
+      
+      return { success: false, error: errorMessage };
+    }
+  };
+
+  const attachLocal = (stream: MediaStream) => {
+    if (callType === 'video' && localVideoRef.current) {
+      localVideoRef.current.srcObject = stream;
+      localVideoRef.current.muted = true; // avoid echo
+      localVideoRef.current.play().catch(() => {});
+    } else if (localAudioRef.current) {
+      localAudioRef.current.srcObject = stream;
+      localAudioRef.current.muted = true; // avoid echo
+      localAudioRef.current.play().catch(() => {});
+    }
+  };
+
+  const attachRemote = (stream: MediaStream) => {
+    if (callType === 'video' && remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = stream;
+      remoteVideoRef.current.play().catch(() => {});
+    } else if (remoteAudioRef.current) {
+      remoteAudioRef.current.srcObject = stream;
+      remoteAudioRef.current.play().catch(() => {});
+    }
+  };
+
+  const monitorConnectionQuality = (pc: RTCPeerConnection) => {
+    const statsInterval = setInterval(async () => {
+      try {
+        const stats = await pc.getStats();
+        let quality: 'excellent' | 'good' | 'poor' | 'unknown' = 'unknown';
+        
+        stats.forEach((report) => {
+          if (report.type === 'inbound-rtp' && report.mediaType === 'audio') {
+            const packetsLost = report.packetsLost || 0;
+            const packetsReceived = report.packetsReceived || 0;
+            const lossRate = packetsReceived > 0 ? packetsLost / (packetsLost + packetsReceived) : 0;
+            
+            if (lossRate < 0.02) quality = 'excellent';
+            else if (lossRate < 0.05) quality = 'good';
+            else quality = 'poor';
+          }
+        });
+        
+        setConnectionQuality(quality);
+      } catch (error) {
+        console.warn('Failed to get connection stats:', error);
+      }
+    }, 2000);
+    
+    return () => clearInterval(statsInterval);
+  };
+
+  const handleStartCall = async (requestedCallType: 'audio' | 'video') => {
+    if (!currentUser || !otherUser) {
+      console.error('Missing user information for call');
+      return;
+    }
+
+    console.log('Starting call with chat:', chat);
+    console.log('Current user:', currentUser);
+    console.log('Other user:', otherUser);
+    console.log('Chat participants:', chat.participants);
+    console.log('Chat participant details:', chat.participantDetails);
+    
+    const permissionResult = await checkAndRequestPermissions(requestedCallType);
+    if (!permissionResult.success) {
+      alert(permissionResult.error || 'Permission denied');
+      return;
+    }
+    
+    console.log('Permissions granted, proceeding with call...');
+    setIsConnecting(true);
+    setCallType(requestedCallType);
+    try {
+      const result = await startCall(chat.id, currentUser.uid, otherUser.uid, (remoteStream) => {
+        attachRemote(remoteStream);
+        setCallStatus('active');
+        setCallStartedAt(Date.now());
+        setIsConnecting(false);
+      }, requestedCallType);
+      
+      // Attach local stream
+      attachLocal(result.localStream);
+      callStopRef.current = result.stop;
+      callCleanupRef.current = result.cleanup;
+      setCallStatus('ringing');
+      
+      // Monitor connection quality
+      const stopMonitoring = monitorConnectionQuality(result.peerConnection);
+      const originalCleanup = result.cleanup;
+      result.cleanup = async () => {
+        stopMonitoring();
+        await originalCleanup();
+      };
+    } catch (e) {
+      console.error('Failed to start call', e);
+      setIsConnecting(false);
+      
+      // More specific error handling
+      if (e instanceof Error) {
+        if (e.name === 'NotAllowedError') {
+          alert(`Permission denied for ${requestedCallType} call. Please allow camera/microphone access and try again.`);
+        } else if (e.name === 'NotFoundError') {
+          alert(`No ${requestedCallType === 'video' ? 'camera' : 'microphone'} found. Please check your device settings.`);
+        } else if (e.name === 'NotReadableError') {
+          alert(`${requestedCallType === 'video' ? 'Camera' : 'Microphone'} is being used by another application. Please close other apps and try again.`);
+        } else {
+          alert(`Failed to start ${requestedCallType} call: ${e.message}`);
+        }
+      } else {
+        alert(`Failed to start ${requestedCallType} call. Please try again.`);
+      }
+    }
+  };
+
+  const handleAnswerCall = async () => {
+    console.log(`Answering ${callType} call...`);
+    
+    // Check permissions first
+    const permissionResult = await checkAndRequestPermissions(callType);
+    if (!permissionResult.success) {
+      alert(permissionResult.error || 'Permission denied');
+      return;
+    }
+    
+    console.log('Permissions granted, answering call...');
+    setIsConnecting(true);
+    try {
+      const result = await answerCall(chat.id, currentUser.uid, (remoteStream) => {
+        attachRemote(remoteStream);
+        setCallStatus('active');
+        setCallStartedAt(Date.now());
+        setIsConnecting(false);
+      });
+      
+      // Attach local stream
+      attachLocal(result.localStream);
+      callStopRef.current = result.stop;
+      callCleanupRef.current = result.cleanup;
+      setIsIncoming(false);
+      
+      // Monitor connection quality
+      const stopMonitoring = monitorConnectionQuality(result.peerConnection);
+      const originalCleanup = result.cleanup;
+      result.cleanup = async () => {
+        stopMonitoring();
+        await originalCleanup();
+      };
+    } catch (e) {
+      console.error('Failed to answer call', e);
+      setIsConnecting(false);
+      
+      // More specific error handling
+      if (e instanceof Error) {
+        if (e.name === 'NotAllowedError') {
+          alert(`Permission denied for ${callType} call. Please allow camera/microphone access and try again.`);
+        } else if (e.name === 'NotFoundError') {
+          alert(`No ${callType === 'video' ? 'camera' : 'microphone'} found. Please check your device settings.`);
+        } else if (e.name === 'NotReadableError') {
+          alert(`${callType === 'video' ? 'Camera' : 'Microphone'} is being used by another application. Please close other apps and try again.`);
+        } else if (e.name === 'OverconstrainedError') {
+          alert(`${callType === 'video' ? 'Camera' : 'Microphone'} doesn't meet the required constraints. Try using a different device.`);
+        } else {
+          alert(`Failed to answer ${callType} call: ${e.message}`);
+        }
+      } else {
+        alert('Failed to answer call. Please try again.');
+      }
+    }
+  };
+
+  const handleCancelCall = async () => {
+    try {
+      console.log('Cancelling call...');
+      await cancelCall(chat.id);
+      
+      // Clean up local state
+      if (callStopRef.current) await callStopRef.current();
+      if (callCleanupRef.current) await callCleanupRef.current();
+      
+      callStopRef.current = null;
+      callCleanupRef.current = null;
+      setCallStatus('idle');
+      setIsIncoming(false);
+      setIsConnecting(false);
+      setConnectionQuality('unknown');
+      setCallStartedAt(null);
+      setIsMuted(false);
+      
+      // Stop any local media elements
+      if (localAudioRef.current && localAudioRef.current.srcObject) {
+        (localAudioRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
+        localAudioRef.current.srcObject = null;
+      }
+      if (localVideoRef.current && localVideoRef.current.srcObject) {
+        (localVideoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
+        localVideoRef.current.srcObject = null;
+      }
+      
+      // Stop ringtone
+      if (ringtoneRef.current) {
+        ringtoneRef.current.pause();
+        ringtoneRef.current.currentTime = 0;
+      }
+    } catch (error) {
+      console.error('Error cancelling call:', error);
+    }
+  };
+
+  const handleHangup = async (isDeclined: boolean = false) => {
+    try {
+      if (callStopRef.current) await callStopRef.current();
+    } finally {
+      // Log call history if this is a declined incoming call
+      if (isDeclined && isIncoming && otherUser) {
+        await logDeclinedCall(chat.id, otherUser.uid, currentUser.uid, callType);
+      }
+      
+      if (callCleanupRef.current) await callCleanupRef.current();
+      callStopRef.current = null;
+      callCleanupRef.current = null;
+      setCallStatus('idle');
+      setIsIncoming(false);
+      setIsConnecting(false);
+      setConnectionQuality('unknown');
+      setCallStartedAt(null);
+      setIsMuted(false);
+      
+      // Stop any local media elements
+      if (localAudioRef.current && localAudioRef.current.srcObject) {
+        (localAudioRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
+        localAudioRef.current.srcObject = null;
+      }
+      if (localVideoRef.current && localVideoRef.current.srcObject) {
+        (localVideoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
+        localVideoRef.current.srcObject = null;
+      }
+      if (remoteAudioRef.current) {
+        remoteAudioRef.current.srcObject = null;
+      }
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = null;
+      }
+      
+      // Stop ringtone
+      if (ringtoneRef.current) {
+        ringtoneRef.current.pause();
+        ringtoneRef.current.currentTime = 0;
+      }
+      
+      await endCall(chat.id);
+    }
+  };
+
+  const toggleMute = () => {
+    const audioStream = localAudioRef.current?.srcObject as MediaStream | null;
+    const videoStream = localVideoRef.current?.srcObject as MediaStream | null;
+    const stream = callType === 'video' ? videoStream : audioStream;
+    if (!stream) return;
+    const enabled = stream.getAudioTracks().every(t => t.enabled);
+    stream.getAudioTracks().forEach(t => (t.enabled = !enabled));
+    setIsMuted(enabled);
+  };
+
+  const toggleVideo = () => {
+    if (callType !== 'video') return;
+    const stream = localVideoRef.current?.srcObject as MediaStream | null;
+    if (!stream) return;
+    const enabled = stream.getVideoTracks().every(t => t.enabled);
+    stream.getVideoTracks().forEach(t => (t.enabled = !enabled));
+    setIsVideoEnabled(enabled);
+  };
+
+  const getConnectionQualityColor = () => {
+    switch (connectionQuality) {
+      case 'excellent': return 'text-green-500';
+      case 'good': return 'text-yellow-500';
+      case 'poor': return 'text-red-500';
+      default: return 'text-gray-500';
+    }
+  };
+
+  const getConnectionQualityIcon = () => {
+    switch (connectionQuality) {
+      case 'excellent': return '●●●';
+      case 'good': return '●●○';
+      case 'poor': return '●○○';
+      default: return '○○○';
+    }
+  };
+
+  // Update call duration every second when active
+  useEffect(() => {
+    if (callStatus !== 'active' || !callStartedAt) {
+      setCallDuration('00:00');
+      return;
+    }
+    const interval = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - callStartedAt) / 1000);
+      const mm = String(Math.floor(elapsed / 60)).padStart(2, '0');
+      const ss = String(elapsed % 60).padStart(2, '0');
+      setCallDuration(`${mm}:${ss}`);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [callStatus, callStartedAt]);
+
+  useEffect(() => {
+    return () => { void handleHangup(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   
   const Avatar = ({ user, className }: { user: User, className?: string }) => (
     <>
@@ -254,7 +772,71 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ currentUser, chat, onBack }) =>
                 <p className="text-xs text-gray-500 dark:text-gray-400">Speaks {LANGUAGES.find(l => l.code === otherUser.language)?.name}</p>
             </div>
         </div>
-        <div className="w-10"></div>
+        <div className="flex items-center gap-2">
+          {callStatus === 'idle' && (
+            <>
+              <button
+                onClick={() => handleStartCall('audio')}
+                className={`p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-600 ${!permissionStatus.audio ? 'opacity-60' : ''}`}
+                aria-label="Start audio call"
+                title={permissionStatus.audio ? "Start audio call" : "Start audio call (microphone permission needed)"}
+              >
+                <Icon name="phone" className="w-6 h-6 text-gray-600 dark:text-gray-300" />
+              </button>
+              <button
+                onClick={() => handleStartCall('video')}
+                className={`p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-600 ${!permissionStatus.video || !permissionStatus.audio ? 'opacity-60' : ''}`}
+                aria-label="Start video call"
+                title={permissionStatus.video && permissionStatus.audio ? "Start video call" : "Start video call (camera/microphone permission needed)"}
+              >
+                <Icon name="video" className="w-6 h-6 text-gray-600 dark:text-gray-300" />
+              </button>
+              {/* Debug permission test button - remove in production */}
+              <button
+                onClick={async () => {
+                  console.log('=== PERMISSION DEBUG TEST ===');
+                  console.log('Secure context:', window.isSecureContext);
+                  console.log('Protocol:', window.location.protocol);
+                  console.log('Host:', window.location.host);
+                  console.log('getUserMedia available:', !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia));
+                  
+                  const audioResult = await checkAndRequestPermissions('audio');
+                  const videoResult = await checkAndRequestPermissions('video');
+                  
+                  const debugInfo = `=== DEBUG INFO ===
+Secure Context: ${window.isSecureContext}
+Protocol: ${window.location.protocol}
+Host: ${window.location.host}
+getUserMedia: ${!!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)}
+
+Audio: ${audioResult.success ? 'OK' : audioResult.error}
+Video: ${videoResult.success ? 'OK' : videoResult.error}`;
+                  
+                  console.log(debugInfo);
+                  alert(debugInfo);
+                }}
+                className="p-1 rounded bg-blue-500 text-white text-xs"
+                title="Debug permissions"
+              >
+                🔍
+              </button>
+            </>
+          )}
+          {callStatus === 'ringing' && isIncoming && (
+            <div className="flex items-center gap-2">
+              <button onClick={handleAnswerCall} className="px-3 py-1 bg-green-500 text-white rounded-full text-xs">Answer</button>
+              <button onClick={() => handleHangup(true)} className="px-3 py-1 bg-red-500 text-white rounded-full text-xs">Decline</button>
+            </div>
+          )}
+          {callStatus === 'ringing' && !isIncoming && (
+            <div className="flex items-center gap-2">
+              <button onClick={handleCancelCall} className="px-3 py-1 bg-red-500 text-white rounded-full text-xs">Cancel</button>
+            </div>
+          )}
+          {callStatus === 'active' && (
+            <button onClick={() => handleHangup()} className="px-3 py-1 bg-red-500 text-white rounded-full text-xs">Hang up</button>
+          )}
+        </div>
       </header>
       
       <main className="flex-1 overflow-y-auto p-4">
@@ -277,7 +859,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ currentUser, chat, onBack }) =>
             value={newMessage}
             onChange={(e) => setNewMessage(e.target.value)}
             onKeyPress={handleKeyPress}
-            placeholder={isRecording ? "Recording..." : "Type a message..."}
+            placeholder={isRecording ? "Recording..." : callStatus === 'ringing' ? "Incoming call. Type /answer or /hangup" : callStatus === 'active' ? "Call active. Type /hangup" : "Type a message..."}
             className="flex-1 w-full px-4 py-2 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-full focus:outline-none focus:ring-2 focus:ring-orange-400 text-gray-800 dark:text-white"
             disabled={isSending || isRecording}
           />
@@ -337,6 +919,165 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ currentUser, chat, onBack }) =>
         
         { (isSending || isRecording) && <p className="text-xs text-center text-gray-500 mt-2">{isRecording ? 'Recording...' : 'Sending...'}</p> }
         {!recognition && <p className="text-xs text-center text-red-500 mt-2">Voice recognition is not supported by your browser.</p>}
+        {/* Hidden audio elements for call playback */}
+        <audio ref={localAudioRef} className="hidden" />
+        <audio ref={remoteAudioRef} className="hidden" />
+        {/* Hidden video elements for non-modal video display (if needed) */}
+        {callType !== 'video' && (
+          <>
+            <video ref={localVideoRef} className="hidden" />
+            <video ref={remoteVideoRef} className="hidden" />
+          </>
+        )}
+
+        {/* Call Modal */}
+        {(callStatus === 'ringing' || callStatus === 'active' || isConnecting) && (
+          <div 
+            className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4 modal-backdrop modal-overlay"
+            onClick={(e) => {
+              // Close modal when clicking backdrop (only for non-ringing states)
+              if (e.target === e.currentTarget && callStatus !== 'ringing') {
+                handleHangup();
+              }
+            }}
+          >
+            <div className="bg-white dark:bg-charcoal rounded-2xl shadow-2xl w-full max-w-sm max-h-[90vh] overflow-hidden relative modal-content">
+              {/* Close button for non-ringing states */}
+              {(callStatus === 'active' || isConnecting) && (
+                <button
+                  onClick={() => handleHangup()}
+                  className="absolute top-3 right-3 p-2 rounded-full bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors z-10"
+                  aria-label="Close call modal"
+                >
+                  <Icon name="close" className="w-4 h-4 text-gray-600 dark:text-gray-300" />
+                </button>
+              )}
+              
+              <div className="flex flex-col items-center p-4 sm:p-6 text-center max-h-full overflow-y-auto">
+                <div className="relative">
+                  <Avatar user={otherUser} className="w-16 h-16 sm:w-20 sm:h-20" />
+                  {callStatus === 'ringing' && (
+                    <div className="absolute -inset-1 rounded-full border-2 border-orange-500 animate-pulse"></div>
+                  )}
+                </div>
+                <h3 className="mt-3 text-lg sm:text-xl font-semibold text-gray-800 dark:text-white">{otherUser.name}</h3>
+                
+                {isConnecting && (
+                  <p className="text-sm text-blue-500 dark:text-blue-400 animate-pulse">
+                    Connecting...
+                  </p>
+                )}
+                
+                {!isConnecting && (
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    {callStatus === 'ringing' 
+                      ? (isIncoming ? `Incoming ${callType} call...` : `${callType} calling...`) 
+                      : `${callType} call · ${callDuration}`}
+                  </p>
+                )}
+                
+                {callStatus === 'active' && connectionQuality !== 'unknown' && (
+                  <div className={`flex items-center mt-2 text-xs ${getConnectionQualityColor()}`}>
+                    <span className="mr-1">{getConnectionQualityIcon()}</span>
+                    <span className="capitalize">{connectionQuality} connection</span>
+                  </div>
+                )}
+              </div>
+
+              {callStatus === 'ringing' && isIncoming && !isConnecting && (
+                <div className="mt-6 flex justify-center gap-4">
+                  <button 
+                    onClick={handleAnswerCall} 
+                    className="flex items-center justify-center w-16 h-16 bg-green-500 hover:bg-green-600 text-white rounded-full transition-colors shadow-lg"
+                    aria-label="Answer call"
+                  >
+                    <Icon name="phone" className="w-6 h-6" />
+                  </button>
+                  <button 
+                    onClick={() => handleHangup(true)} 
+                    className="flex items-center justify-center w-16 h-16 bg-red-500 hover:bg-red-600 text-white rounded-full transition-colors shadow-lg"
+                    aria-label="Decline call"
+                  >
+                    <Icon name="phone" className="w-6 h-6 rotate-[135deg]" />
+                  </button>
+                </div>
+              )}
+
+                             {callStatus === 'ringing' && !isIncoming && !isConnecting && (
+                 <div className="mt-6 flex justify-center">
+                   <button 
+                     onClick={() => handleCancelCall()} 
+                     className="flex items-center justify-center w-16 h-16 bg-red-500 hover:bg-red-600 text-white rounded-full transition-colors shadow-lg"
+                     aria-label="Cancel call"
+                   >
+                     <Icon name="phone" className="w-6 h-6 rotate-[135deg]" />
+                   </button>
+                 </div>
+               )}
+
+              {callStatus === 'active' && !isConnecting && (
+                <>
+                                                          {callType === 'video' && (
+                       <div className="mt-4 relative w-full">
+                         {/* Remote Video */}
+                         <div className="relative w-full max-w-64 mx-auto h-40 sm:h-48 bg-gray-900 rounded-lg overflow-hidden">
+                           <video
+                             ref={remoteVideoRef}
+                             className="w-full h-full object-cover"
+                             autoPlay
+                             playsInline
+                           />
+                           {/* Local Video (Picture in Picture) */}
+                           <div className="absolute top-2 right-2 w-12 h-9 sm:w-16 sm:h-12 bg-gray-800 rounded overflow-hidden border-2 border-white shadow-lg">
+                             <video
+                               ref={localVideoRef}
+                               className="w-full h-full object-cover"
+                               autoPlay
+                               playsInline
+                               muted
+                             />
+                           </div>
+                         </div>
+                       </div>
+                     )}
+                                     <div className="mt-6 flex items-center justify-center gap-2 sm:gap-3 flex-wrap">
+                     <button 
+                       onClick={toggleMute} 
+                       className={`flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 rounded-full transition-colors shadow-lg ${
+                         isMuted 
+                           ? 'bg-red-500 hover:bg-red-600 text-white' 
+                           : 'bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-white'
+                       }`}
+                       aria-label={isMuted ? 'Unmute' : 'Mute'}
+                     >
+                       <Icon name={isMuted ? 'microphone-off' : 'microphone'} className="w-4 h-4 sm:w-5 sm:h-5" />
+                     </button>
+                     {callType === 'video' && (
+                       <button 
+                         onClick={toggleVideo} 
+                         className={`flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 rounded-full transition-colors shadow-lg ${
+                           !isVideoEnabled 
+                             ? 'bg-red-500 hover:bg-red-600 text-white' 
+                             : 'bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-white'
+                         }`}
+                         aria-label={isVideoEnabled ? 'Turn off camera' : 'Turn on camera'}
+                       >
+                         <Icon name={isVideoEnabled ? 'video' : 'video-off'} className="w-4 h-4 sm:w-5 sm:h-5" />
+                       </button>
+                     )}
+                     <button 
+                       onClick={() => handleHangup()} 
+                       className="flex items-center justify-center w-14 h-14 sm:w-16 sm:h-16 bg-red-500 hover:bg-red-600 text-white rounded-full transition-colors shadow-lg"
+                       aria-label="Hang up"
+                     >
+                       <Icon name="phone" className="w-5 h-5 sm:w-6 sm:h-6 rotate-[135deg]" />
+                     </button>
+                   </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
       </footer>
     </div>
   );

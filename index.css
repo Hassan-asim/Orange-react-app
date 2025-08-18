@@ -1,7 +1,41 @@
-.bg-imgg{
-    background-image: url('/public/bg.jpeg');
-    background-size: cover;
-    background-position: center;
+.bg-imgg {
+  background-image: url("/public/bg.jpeg");
+  background-size: cover;
+  background-position: center;
+}
+
+/* Modal animations and positioning */
+.modal-backdrop {
+  animation: fadeIn 0.2s ease-out;
+}
+
+.modal-content {
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9) translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* Ensure modal is always on top */
+.modal-overlay {
+  z-index: 9999;
 }
 
 /* PWA specific styles */
@@ -12,7 +46,7 @@
     -webkit-touch-callout: none;
     -webkit-tap-highlight-color: transparent;
   }
-  
+
   /* Add padding for status bar on iOS */
   .pwa-safe-area {
     padding-top: env(safe-area-inset-top);

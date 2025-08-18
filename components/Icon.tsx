@@ -1,7 +1,7 @@
 import React from 'react';
 
 interface IconProps {
-  name: 'send' | 'settings' | 'back' | 'translate' | 'chat' | 'microphone' | 'play' | 'pause' | 'logout' | 'add-friend' | 'check' | 'close' | 'user-profile' | 'image';
+  name: 'send' | 'settings' | 'back' | 'translate' | 'chat' | 'microphone' | 'microphone-off' | 'play' | 'pause' | 'logout' | 'add-friend' | 'check' | 'close' | 'user-profile' | 'image' | 'phone' | 'video' | 'video-off';
   className?: string;
 }
 
@@ -34,6 +34,13 @@ const Icon: React.FC<IconProps> = ({ name, className = 'w-6 h-6' }) => {
     microphone: (
       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M19 10v2a7 7 0 01-14 0v-2" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 19v3" />
+      </svg>
+    ),
+    'microphone-off': (
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M5.636 5.636l12.728 12.728M9 9v3a3 3 0 106 0V9M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z" />
         <path strokeLinecap="round" strokeLinejoin="round" d="M19 10v2a7 7 0 01-14 0v-2" />
         <path strokeLinecap="round" strokeLinejoin="round" d="M12 19v3" />
       </svg>
@@ -76,6 +83,21 @@ const Icon: React.FC<IconProps> = ({ name, className = 'w-6 h-6' }) => {
     image: (
       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
         <path strokeLinecap="round" strokeLinejoin="round" d="m2.25 15.75 5.159-5.159a2.25 2.25 0 0 1 3.182 0l5.159 5.159m-1.5-1.5 1.409-1.409a2.25 2.25 0 0 1 3.182 0l2.909 2.909M18 12v4.75A2.25 2.25 0 0 1 15.75 19H8.25A2.25 2.25 0 0 1 6 16.75V12m12 0V8.25A2.25 2.25 0 0 0 15.75 6H8.25A2.25 2.25 0 0 0 6 8.25V12m12 0H6" />
+      </svg>
+    ),
+    phone: (
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 6.75c0 7.042 5.708 12.75 12.75 12.75h1.125a2.25 2.25 0 0 0 2.25-2.25v-1.743a1.125 1.125 0 0 0-.879-1.098l-2.338-.584a1.125 1.125 0 0 0-1.106.36l-.784.913a.75.75 0 0 1-.93.18 11.25 11.25 0 0 1-5.214-5.214.75.75 0 0 1 .18-.93l.913-.784c.3-.258.43-.655.36-1.106l-.584-2.338A1.125 1.125 0 0 0 6.243 4.5H4.5A2.25 2.25 0 0 0 2.25 6.75z" />
+      </svg>
+    ),
+    video: (
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="m15.75 10.5 4.72-4.72a.75.75 0 0 1 1.28.53v11.38a.75.75 0 0 1-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 0 0 2.25-2.25v-9a2.25 2.25 0 0 0-2.25-2.25h-9A2.25 2.25 0 0 0 2.25 7.5v9a2.25 2.25 0 0 0 2.25 2.25Z" />
+      </svg>
+    ),
+    'video-off': (
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={className}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 0 0 1.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.451 10.451 0 0 1 12 4.5c4.756 0 8.773 3.162 10.065 7.498a10.522 10.522 0 0 1-4.293 5.774M6.228 6.228 3 3m3.228 3.228 3.65 3.65m7.894 7.894L21 21m-3.228-3.228-3.65-3.65m0 0a3 3 0 1 1-4.243-4.243m4.242 4.242L9.88 9.88" />
       </svg>
     ),
   };

@@ -1,12 +1,12 @@
 import React, { useState } from "react";
-import { auth, googleProvider, firestore, serverTimestamp } from "../services/firebase";
+import { auth, googleProvider, modularDb } from "../services/firebase";
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signInWithPopup,
   updateProfile,
 } from "firebase/auth";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
 import { FaEye, FaEyeSlash } from "react-icons/fa"; // 👈 Import icons
 import PIC1 from "/logg.png";
 
@@ -28,12 +28,12 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess, onLoginFailur
       return;
     }
 
-    const userRef = firestore.doc(`users/${user.uid}`);
-    const docSnap = await userRef.get();
+    const userRef = doc(modularDb, 'users', user.uid);
+    const docSnap = await getDoc(userRef);
 
-    if (!docSnap) {
+    if (!docSnap.exists()) {
       const emailLocalPart = user.email.split("@")[0];
-      await userRef.set({
+      await setDoc(userRef, {
         email: user.email,
         displayName: user.displayName || emailLocalPart,
         username: emailLocalPart,

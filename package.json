@@ -13,6 +13,7 @@
   "dependencies": {
     "@google/genai": "^1.13.0",
     "@types/react-router-dom": "^5.3.3",
+    "agora-rtc-sdk-ng": "^4.24.0",
     "emoji-picker-react": "^4.13.2",
     "firebase": "^10.12.3",
     "react": "^19.1.1",

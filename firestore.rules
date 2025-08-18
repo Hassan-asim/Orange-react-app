@@ -1,0 +1,57 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isChatParticipant(chatId) {
+      return exists(/databases/$(database)/documents/chats/$(chatId)) &&
+             get(/databases/$(database)/documents/chats/$(chatId)).data.participants.hasAny([request.auth.uid]);
+    }
+
+    // Users collection
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Friend requests
+    match /friend_requests/{reqId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // Chats and nested resources
+    match /chats/{chatId} {
+      allow read: if isSignedIn() && isChatParticipant(chatId);
+      allow create, update: if isSignedIn() && isChatParticipant(chatId);
+
+      match /messages/{messageId} {
+        allow read, write: if isSignedIn() && isChatParticipant(chatId);
+      }
+
+      // WebRTC signaling document and its subcollections
+      match /call/{docId} {
+        allow read, write, update, delete: if isSignedIn() && isChatParticipant(chatId);
+
+        match /{subPath=**} {
+          allow read, write: if isSignedIn() && isChatParticipant(chatId);
+        }
+      }
+    }
+
+               // Call history collection
+           match /callHistory/{callId} {
+             allow read, write: if isSignedIn() &&
+               (resource.data.callerUid == request.auth.uid || resource.data.calleeUid == request.auth.uid);
+           }
+           
+           // Incoming call notifications for Agora
+           match /incoming_calls/{notificationId} {
+             allow read, write: if isSignedIn() &&
+               (resource.data.callerUid == request.auth.uid || resource.data.calleeUid == request.auth.uid);
+           }
+  }
+}
+
+

@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { auth, firestore } from '../services/firebase';
+import { auth, modularDb } from '../services/firebase';
 import { User, Screen, Language, Theme, Chat } from '../types';
 import { useTheme } from '../hooks/useTheme';
+import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 
 import SplashScreen from './SplashScreen';
 import LoginScreen from './LoginScreen';
@@ -22,11 +23,11 @@ const ChatApp: React.FC = () => {
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (firebaseUser) => {
       if (firebaseUser) {
-        const userRef = firestore.collection('users').doc(firebaseUser.uid);
+        const userRef = doc(modularDb, 'users', firebaseUser.uid);
         try {
-          const userSnap = await userRef.get();
+          const userSnap = await getDoc(userRef);
 
-          if (userSnap.exists) {
+          if (userSnap.exists()) {
             const userData = userSnap.data() as User;
             setCurrentUser(userData);
             setTheme(userData.theme || 'light');
@@ -40,7 +41,7 @@ const ChatApp: React.FC = () => {
               language: Language.EN,
               theme: 'light',
             };
-            await userRef.set(newUser);
+            await setDoc(userRef, newUser);
             setCurrentUser(newUser);
             setTheme('light');
           }
@@ -73,9 +74,9 @@ const ChatApp: React.FC = () => {
     if (currentUser) {
       const updatedUser = { ...currentUser, language };
       setCurrentUser(updatedUser);
-      const userRef = firestore.collection('users').doc(currentUser.uid);
+      const userRef = doc(modularDb, 'users', currentUser.uid);
       try {
-        await userRef.update({ language });
+        await updateDoc(userRef, { language });
       } catch (error) {
         console.error("Failed to update language:", error);
         // Optionally revert state
@@ -88,12 +89,11 @@ const ChatApp: React.FC = () => {
       if(currentUser){
           const updatedUser = { ...currentUser, theme };
           setCurrentUser(updatedUser);
-          const userRef = firestore.collection('users').doc(currentUser.uid);
+          const userRef = doc(modularDb, 'users', currentUser.uid);
           try {
-            await userRef.update({ theme });
+            await updateDoc(userRef, { theme });
           } catch(error) {
             console.error("Failed to update theme:", error);
-            // Optionally revert state
             setCurrentUser(currentUser);
           }
       }

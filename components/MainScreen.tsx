@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { firestore } from '../services/firebase';
+import { modularDb } from '../services/firebase';
 import { User, Chat } from '../types';
+import { collection, query, where, onSnapshot, doc, getDoc } from 'firebase/firestore';
+import PIC1 from '../public/logg.png';
 import Icon from './Icon';
-import PIC1 from '/logg.png';
 
 interface MainScreenProps {
   currentUser: User;
@@ -16,10 +17,10 @@ const MainScreen: React.FC<MainScreenProps> = ({ currentUser, onSelectChat }) =>
   useEffect(() => {
     if (!currentUser) return;
 
-    const chatsCollectionRef = firestore.collection('chats');
-    const q = chatsCollectionRef.where('participants', 'array-contains', currentUser.uid);
+    const chatsCollectionRef = collection(modularDb, 'chats');
+    const q = query(chatsCollectionRef, where('participants', 'array-contains', currentUser.uid));
 
-    const unsubscribe = q.onSnapshot(async (querySnapshot) => {
+    const unsubscribe = onSnapshot(q, async (querySnapshot) => {
       try {
         const chatsData: Chat[] = await Promise.all(
           querySnapshot.docs.map(async (chatDoc) => {
@@ -27,9 +28,9 @@ const MainScreen: React.FC<MainScreenProps> = ({ currentUser, onSelectChat }) =>
             const participantUids = chatData.participants as string[];
             
             const participantDetailsPromises = participantUids.map(async (uid) => {
-              const userDocRef = firestore.collection('users').doc(uid);
-              const userSnap = await userDocRef.get();
-              return userSnap.exists ? userSnap.data() as User : null;
+              const userDocRef = doc(modularDb, 'users', uid);
+              const userSnap = await getDoc(userDocRef);
+              return userSnap.exists() ? userSnap.data() as User : null;
             });
 
             const participantDetails = (await Promise.all(participantDetailsPromises)).filter(p => p !== null) as User[];

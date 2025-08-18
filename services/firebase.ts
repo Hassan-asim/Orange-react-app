@@ -1,6 +1,7 @@
 import firebase from 'firebase/compat/app';
 import 'firebase/compat/auth';
-import 'firebase/compat/firestore';
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import { initializeFirestore } from 'firebase/firestore';
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
@@ -12,17 +13,25 @@ const firebaseConfig = {
   appId: "1:1069432460023:web:058aa81f78b1bc455b39f2"
 };
 
-
-// Initialize Firebase
+// Initialize Firebase (compat version only for auth)
 if (!firebase.apps.length) {
   firebase.initializeApp(firebaseConfig);
 }
 
+// Initialize modular app (v9+) for Firestore operations
+if (!getApps().length) {
+  initializeApp(firebaseConfig);
+}
 
 // Get Firebase services
 const auth = firebase.auth();
-const firestore = firebase.firestore();
 const googleProvider = new firebase.auth.GoogleAuthProvider();
-const serverTimestamp = firebase.firestore.FieldValue.serverTimestamp;
 
-export { auth, firestore, googleProvider, serverTimestamp };
+// Modular exports for Firestore operations
+const modularApp = getApps().length ? getApp() : initializeApp(firebaseConfig);
+// Prefer long-polling to avoid HTTP/2/QUIC issues for broader compatibility
+const modularDb = initializeFirestore(modularApp, {
+  experimentalAutoDetectLongPolling: true
+});
+
+export { auth, googleProvider, modularApp, modularDb };

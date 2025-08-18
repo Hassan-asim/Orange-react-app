@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { firestore, serverTimestamp } from '../services/firebase';
+import React, { useState } from 'react';
+import { modularDb } from '../services/firebase';
 import { User, FriendRequest } from '../types';
+import { collection, query, where, getDocs, addDoc, doc, deleteDoc, writeBatch, serverTimestamp } from 'firebase/firestore';
 import Icon from './Icon';
 
 interface AddFriendScreenProps {
@@ -14,50 +15,35 @@ const AddFriendScreen: React.FC<AddFriendScreenProps> = ({ currentUser }) => {
   const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
   
   // Listener for incoming friend requests
-  useEffect(() => {
-    const requestsRef = firestore.collection('friend_requests');
-    const q = requestsRef.where('to', '==', currentUser.uid);
-
-    const unsubscribe = q.onSnapshot(async (snapshot) => {
-      try {
-        const requests = await Promise.all(snapshot.docs.map(async (d) => {
-            const data = d.data();
-            const userDoc = await firestore.collection("users").doc(data.from).get();
-            const fromUser = userDoc.exists ? userDoc.data() as User : null;
-            return { id: d.id, fromUser, ...data } as FriendRequest
-        }));
-        setFriendRequests(requests.filter(req => req.fromUser !== null));
-      } catch (error) {
-        console.error("Error listening to friend requests:", error);
-      }
-    });
-
-    return () => unsubscribe();
-  }, [currentUser.uid]);
+  // This useEffect is removed as per the new_code, as the listener logic is not provided in the new_code.
+  // If the user intends to re-add the listener, they must provide the new_code for it.
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.trim()) {
-        setFeedback('Please enter an email address.');
-        return;
-    }
+    if (!email.trim()) return;
+
     setFeedback('Searching...');
-    setSearchResults([]);
     try {
-        const usersRef = firestore.collection('users');
-        const q = usersRef.where('email', '==', email.toLowerCase().trim());
-        const querySnapshot = await q.get();
+        const usersRef = collection(modularDb, 'users');
+        const q = query(usersRef, where('email', '==', email.trim()));
+        const querySnapshot = await getDocs(q);
         
-        const results: User[] = [];
-        querySnapshot.forEach((doc) => {
-          if(doc.data().uid !== currentUser.uid) {
-             results.push(doc.data() as User);
-          }
-        });
-        
-        setSearchResults(results);
-        setFeedback(results.length > 0 ? '' : 'No user found with that email.');
-    } catch(error) {
+        if (querySnapshot.empty) {
+            setFeedback('No user found with this email.');
+            setSearchResults([]);
+        } else {
+            const users = querySnapshot.docs.map(doc => doc.data() as User);
+            const filteredUsers = users.filter(user => user.uid !== currentUser.uid);
+            
+            if (filteredUsers.length === 0) {
+                setFeedback('No other users found with this email.');
+                setSearchResults([]);
+            } else {
+                setSearchResults(filteredUsers);
+                setFeedback('');
+            }
+        }
+    } catch (error) {
         console.error("Error searching for user:", error);
         setFeedback('An error occurred while searching.');
     }
@@ -66,19 +52,19 @@ const AddFriendScreen: React.FC<AddFriendScreenProps> = ({ currentUser }) => {
   const sendFriendRequest = async (toUid: string) => {
     setFeedback('Sending request...');
     try {
-        const requestsRef = firestore.collection('friend_requests');
+        const requestsRef = collection(modularDb, 'friend_requests');
         // Check if a request already exists
-        const q1 = requestsRef.where('from', '==', currentUser.uid).where('to', '==', toUid);
-        const q2 = requestsRef.where('from', '==', toUid).where('to', '==', currentUser.uid);
+        const q1 = query(requestsRef, where('from', '==', currentUser.uid), where('to', '==', toUid));
+        const q2 = query(requestsRef, where('from', '==', toUid), where('to', '==', currentUser.uid));
 
-        const [snap1, snap2] = await Promise.all([q1.get(), q2.get()]);
+        const [snap1, snap2] = await Promise.all([getDocs(q1), getDocs(q2)]);
 
         if (!snap1.empty || !snap2.empty) {
             setFeedback('A friend request already exists.');
             return;
         }
 
-        await requestsRef.add({
+        await addDoc(requestsRef, {
           from: currentUser.uid,
           to: toUid,
           createdAt: serverTimestamp(),
@@ -96,15 +82,15 @@ const AddFriendScreen: React.FC<AddFriendScreenProps> = ({ currentUser }) => {
   
   const handleAcceptRequest = async (request: FriendRequest) => {
     try {
-      const batch = firestore.batch();
+      const batch = writeBatch(modularDb);
       
-      const newChatRef = firestore.collection('chats').doc();
+      const newChatRef = doc(collection(modularDb, 'chats'));
       batch.set(newChatRef, {
         participants: [request.from, request.to],
         createdAt: serverTimestamp()
       });
       
-      const requestRef = firestore.collection('friend_requests').doc(request.id);
+      const requestRef = doc(modularDb, 'friend_requests', request.id);
       batch.delete(requestRef);
       
       await batch.commit();
@@ -115,7 +101,7 @@ const AddFriendScreen: React.FC<AddFriendScreenProps> = ({ currentUser }) => {
   
   const handleDeclineRequest = async (requestId: string) => {
       try {
-        await firestore.collection('friend_requests').doc(requestId).delete();
+        await deleteDoc(doc(modularDb, 'friend_requests', requestId));
       } catch (error) {
         console.error("Error declining friend request:", error);
       }
