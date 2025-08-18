@@ -8,7 +8,7 @@ import OrangeIcon from './OrangeIcon';
 import { LANGUAGES } from '../constants';
 import { translateText } from '../services/geminiService';
 import EmojiPicker from 'emoji-picker-react';
-import { listenForIncomingCall, startCall, answerCall, onCallStatusChange, endCall, cancelCall, logMissedCall, logDeclinedCall } from '../services/webrtcService';
+import { listenForIncomingCall, startCall, answerCall, onCallStatusChange, endCall, cancelCall, logMissedCall, logDeclinedCall, cleanupExistingCall } from '../services/webrtcService';
 
 interface ChatScreenProps {
   currentUser: User;
@@ -93,93 +93,50 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ currentUser, chat, onBack }) =>
 
   // Listen for incoming WebRTC calls
   useEffect(() => {
-         const unsub1 = listenForIncomingCall(chat.id, currentUser.uid, ({ callType: incomingCallType }) => {
-       setIsIncoming(true);
-       setCallStatus('ringing');
-       setCallType(incomingCallType);
-       
-       // Request notification permission if not already granted
-       if (Notification.permission === 'default') {
-         Notification.requestPermission();
-       }
-       
-       // Show browser notification
-       if (Notification.permission === 'granted') {
-         new Notification(`Incoming ${incomingCallType} call from ${otherUser?.name || 'Unknown'}`, {
-           icon: '/icon-192x192.png',
-           tag: 'incoming-call'
-         });
-       }
-     }, () => {
-       // Call cancelled callback
-       console.log('Incoming call was cancelled');
-       setCallStatus('idle');
-       setIsIncoming(false);
-       setIsConnecting(false);
-       setConnectionQuality('unknown');
-       setCallStartedAt(null);
-       setIsMuted(false);
-       
-       // Stop ringtone
-       if (ringtoneRef.current) {
-         ringtoneRef.current.pause();
-         ringtoneRef.current.currentTime = 0;
-       }
-     });
+    // Clean up any old call documents when opening a chat
+    cleanupExistingCall(chat.id);
     
-         const unsub2 = onCallStatusChange(chat.id, (doc) => {
-       if (!doc) {
-         setCallStatus('idle');
-         setIsIncoming(false);
-         setConnectionQuality('unknown');
-         return;
-       }
-       if (doc.status === 'ended' || doc.status === 'cancelled') {
-         console.log('Call ended/cancelled remotely, cleaning up locally');
-         void handleHangup();
-       }
-     }, () => {
-       // Callback for when call is ended remotely
-       console.log('Call ended callback triggered');
-       void handleHangup();
-     });
+    const unsub1 = listenForIncomingCall(chat.id, currentUser.uid, ({ callType: incomingCallType }) => {
+      setIsIncoming(true);
+      setCallStatus('ringing');
+      setCallType(incomingCallType);
+      
+      // Request notification permission if not already granted
+      if (Notification.permission === 'default') {
+        Notification.requestPermission();
+      }
+      
+      // Show browser notification
+      if (Notification.permission === 'granted') {
+        new Notification(`Incoming ${incomingCallType} call from ${otherUser?.name || 'Unknown'}`, {
+          icon: '/icon-192x192.png',
+          tag: 'incoming-call'
+        });
+      }
+    }, () => {
+      // Call cancelled callback - only for incoming calls
+      if (isIncoming) {
+        setCallStatus('idle');
+        setIsIncoming(false);
+        setIsConnecting(false);
+        setConnectionQuality('unknown');
+        setCallStartedAt(null);
+        setIsMuted(false);
+        
+        // Stop ringtone
+        if (ringtoneRef.current) {
+          ringtoneRef.current.pause();
+          ringtoneRef.current.currentTime = 0;
+        }
+      }
+    });
     
     return () => {
       unsub1 && unsub1();
-      unsub2 && unsub2();
     };
-  }, [chat.id, currentUser.uid, otherUser?.name]);
+  }, [chat.id, currentUser.uid]);
 
-  // Check permissions on mount - simplified approach
-  useEffect(() => {
-    const checkInitialPermissions = async () => {
-      try {
-        // Test audio permission
-        try {
-          const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          audioStream.getTracks().forEach(track => track.stop());
-          setPermissionStatus(prev => ({ ...prev, audio: true }));
-        } catch (error) {
-          console.log('Audio permission not granted');
-          setPermissionStatus(prev => ({ ...prev, audio: false }));
-        }
-
-        // Test video permission
-        try {
-          const videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
-          videoStream.getTracks().forEach(track => track.stop());
-          setPermissionStatus(prev => ({ ...prev, video: true }));
-        } catch (error) {
-          console.log('Video permission not granted');
-          setPermissionStatus(prev => ({ ...prev, video: false }));
-        }
-      } catch (error) {
-        console.warn('Failed to check permissions:', error);
-      }
-    };
-    
-    checkInitialPermissions();
-  }, []);
+  // Don't automatically check permissions on mount - only when user clicks call
 
   if (!otherUser) {
       return (
@@ -217,8 +174,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ currentUser, chat, onBack }) =>
             }
         });
     } catch (error) {
-        console.error("Error sending message:", error);
-        // Optionally, show an error to the user
+        // Silent error handling
     } finally {
         setNewMessage('');
         setIsSending(false);
@@ -309,14 +265,12 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ currentUser, chat, onBack }) =>
             }
           });
         } catch (error) {
-          console.error("Error sending image:", error);
           alert('Failed to send image');
         }
       };
       
       reader.readAsDataURL(file);
     } catch (error) {
-      console.error("Error processing image:", error);
       alert('Failed to process image');
     } finally {
       setIsSending(false);
@@ -361,7 +315,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ currentUser, chat, onBack }) =>
   useEffect(() => {
     if (!recognition) return;
     recognition.onresult = (event: any) => handleSend(event.results[0][0].transcript, 'voice');
-    recognition.onerror = (event: any) => { console.error('Speech recognition error:', event.error); setIsRecording(false); };
+    recognition.onerror = (event: any) => { setIsRecording(false); };
     recognition.onend = () => setIsRecording(false);
     return () => { if (recognition) recognition.abort(); }
   }, [currentUser.language, otherUser?.language, chat.id]);
@@ -369,8 +323,6 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ currentUser, chat, onBack }) =>
   // --- WebRTC Call Handlers ---
   const checkAndRequestPermissions = async (callType: 'audio' | 'video'): Promise<{ success: boolean; error?: string }> => {
     try {
-      console.log(`Checking permissions for ${callType} call...`);
-      
       // Check if we're in a secure context
       if (!window.isSecureContext) {
         return { 
@@ -387,51 +339,45 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ currentUser, chat, onBack }) =>
         };
       }
       
-      const constraints = callType === 'video' 
-        ? { audio: true, video: true }
-        : { audio: true };
+      // Only request microphone permission when call icon is clicked
+      const constraints = { audio: true };
       
-      console.log('Requesting media with constraints:', constraints);
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      console.log('Permission granted, stream obtained:', stream);
       
       // Clean up immediately
       stream.getTracks().forEach(track => {
         track.stop();
-        console.log(`Stopped track: ${track.kind}`);
       });
       
       // Update permission status after successful access
       setPermissionStatus(prev => ({
         audio: true,
-        video: callType === 'video' ? true : prev.video
+        video: prev.video // Don't change video permission status
       }));
       
       return { success: true };
     } catch (error) {
-      console.error('Media permission error:', error);
-      
       let errorMessage = 'Unknown error occurred';
       
       if (error instanceof Error) {
         switch (error.name) {
           case 'NotAllowedError':
-            errorMessage = 'Permission denied. Please click "Allow" when prompted for camera/microphone access.';
+            errorMessage = 'Permission denied. Please click "Allow" when prompted for microphone access.';
             break;
           case 'NotFoundError':
-            errorMessage = `No ${callType === 'video' ? 'camera' : 'microphone'} found. Please check your device connections.`;
+            errorMessage = 'No microphone found. Please check your device connections.';
             break;
           case 'NotReadableError':
-            errorMessage = `${callType === 'video' ? 'Camera' : 'Microphone'} is being used by another application. Please close other apps using your camera/microphone.`;
+            errorMessage = 'Microphone is being used by another application. Please close other apps using your microphone.';
             break;
           case 'OverconstrainedError':
-            errorMessage = 'Your device does not support the required camera/microphone settings.';
+            errorMessage = 'Your device does not support the required microphone settings.';
             break;
           case 'SecurityError':
             errorMessage = 'Security error. Please make sure you are using HTTPS and try again.';
             break;
           default:
-            errorMessage = `Error accessing ${callType === 'video' ? 'camera/microphone' : 'microphone'}: ${error.message}`;
+            errorMessage = `Error accessing microphone: ${error.message}`;
         }
       }
       
@@ -481,7 +427,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ currentUser, chat, onBack }) =>
         
         setConnectionQuality(quality);
       } catch (error) {
-        console.warn('Failed to get connection stats:', error);
+        // Silent error handling
       }
     }, 2000);
     
@@ -490,38 +436,38 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ currentUser, chat, onBack }) =>
 
   const handleStartCall = async (requestedCallType: 'audio' | 'video') => {
     if (!currentUser || !otherUser) {
-      console.error('Missing user information for call');
-      return;
-    }
-
-    console.log('Starting call with chat:', chat);
-    console.log('Current user:', currentUser);
-    console.log('Other user:', otherUser);
-    console.log('Chat participants:', chat.participants);
-    console.log('Chat participant details:', chat.participantDetails);
-    
-    const permissionResult = await checkAndRequestPermissions(requestedCallType);
-    if (!permissionResult.success) {
-      alert(permissionResult.error || 'Permission denied');
+      alert('Missing user information. Please refresh the page and try again.');
       return;
     }
     
-    console.log('Permissions granted, proceeding with call...');
-    setIsConnecting(true);
+    // Immediately show popup with connecting status
     setCallType(requestedCallType);
+    setIsConnecting(true);
+    setCallStatus('ringing');
+    
     try {
+      const permissionResult = await checkAndRequestPermissions(requestedCallType);
+      if (!permissionResult.success) {
+        alert(permissionResult.error || 'Permission denied');
+        setIsConnecting(false);
+        setCallStatus('idle');
+        await stopAllMediaTracks();
+        return;
+      }
+      
       const result = await startCall(chat.id, currentUser.uid, otherUser.uid, (remoteStream) => {
         attachRemote(remoteStream);
         setCallStatus('active');
         setCallStartedAt(Date.now());
         setIsConnecting(false);
+        setIsIncoming(false);
       }, requestedCallType);
       
       // Attach local stream
       attachLocal(result.localStream);
       callStopRef.current = result.stop;
       callCleanupRef.current = result.cleanup;
-      setCallStatus('ringing');
+      setIsConnecting(false);
       
       // Monitor connection quality
       const stopMonitoring = monitorConnectionQuality(result.peerConnection);
@@ -531,17 +477,17 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ currentUser, chat, onBack }) =>
         await originalCleanup();
       };
     } catch (e) {
-      console.error('Failed to start call', e);
       setIsConnecting(false);
+      setCallStatus('idle');
+      await stopAllMediaTracks();
       
-      // More specific error handling
       if (e instanceof Error) {
         if (e.name === 'NotAllowedError') {
-          alert(`Permission denied for ${requestedCallType} call. Please allow camera/microphone access and try again.`);
+          alert(`Permission denied for microphone access. Please allow microphone access and try again.`);
         } else if (e.name === 'NotFoundError') {
-          alert(`No ${requestedCallType === 'video' ? 'camera' : 'microphone'} found. Please check your device settings.`);
+          alert(`No microphone found. Please check your device settings.`);
         } else if (e.name === 'NotReadableError') {
-          alert(`${requestedCallType === 'video' ? 'Camera' : 'Microphone'} is being used by another application. Please close other apps and try again.`);
+          alert(`Microphone is being used by another application. Please close other apps and try again.`);
         } else {
           alert(`Failed to start ${requestedCallType} call: ${e.message}`);
         }
@@ -552,16 +498,12 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ currentUser, chat, onBack }) =>
   };
 
   const handleAnswerCall = async () => {
-    console.log(`Answering ${callType} call...`);
-    
-    // Check permissions first
-    const permissionResult = await checkAndRequestPermissions(callType);
+    const permissionResult = await checkAndRequestPermissions('audio');
     if (!permissionResult.success) {
       alert(permissionResult.error || 'Permission denied');
       return;
     }
     
-    console.log('Permissions granted, answering call...');
     setIsConnecting(true);
     try {
       const result = await answerCall(chat.id, currentUser.uid, (remoteStream) => {
@@ -569,15 +511,13 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ currentUser, chat, onBack }) =>
         setCallStatus('active');
         setCallStartedAt(Date.now());
         setIsConnecting(false);
+        setIsIncoming(false);
       });
       
-      // Attach local stream
       attachLocal(result.localStream);
       callStopRef.current = result.stop;
       callCleanupRef.current = result.cleanup;
-      setIsIncoming(false);
       
-      // Monitor connection quality
       const stopMonitoring = monitorConnectionQuality(result.peerConnection);
       const originalCleanup = result.cleanup;
       result.cleanup = async () => {
@@ -585,21 +525,21 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ currentUser, chat, onBack }) =>
         await originalCleanup();
       };
     } catch (e) {
-      console.error('Failed to answer call', e);
       setIsConnecting(false);
+      setCallStatus('idle');
+      await stopAllMediaTracks();
       
-      // More specific error handling
       if (e instanceof Error) {
         if (e.name === 'NotAllowedError') {
-          alert(`Permission denied for ${callType} call. Please allow camera/microphone access and try again.`);
+          alert(`Permission denied for microphone access. Please allow microphone access and try again.`);
         } else if (e.name === 'NotFoundError') {
-          alert(`No ${callType === 'video' ? 'camera' : 'microphone'} found. Please check your device settings.`);
+          alert(`No microphone found. Please check your device settings.`);
         } else if (e.name === 'NotReadableError') {
-          alert(`${callType === 'video' ? 'Camera' : 'Microphone'} is being used by another application. Please close other apps and try again.`);
+          alert(`Microphone is being used by another application. Please close other apps and try again.`);
         } else if (e.name === 'OverconstrainedError') {
-          alert(`${callType === 'video' ? 'Camera' : 'Microphone'} doesn't meet the required constraints. Try using a different device.`);
+          alert(`Microphone doesn't meet the required constraints. Try using a different device.`);
         } else {
-          alert(`Failed to answer ${callType} call: ${e.message}`);
+          alert(`Failed to answer call: ${e.message}`);
         }
       } else {
         alert('Failed to answer call. Please try again.');
@@ -609,10 +549,8 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ currentUser, chat, onBack }) =>
 
   const handleCancelCall = async () => {
     try {
-      console.log('Cancelling call...');
       await cancelCall(chat.id);
       
-      // Clean up local state
       if (callStopRef.current) await callStopRef.current();
       if (callCleanupRef.current) await callCleanupRef.current();
       
@@ -625,23 +563,14 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ currentUser, chat, onBack }) =>
       setCallStartedAt(null);
       setIsMuted(false);
       
-      // Stop any local media elements
-      if (localAudioRef.current && localAudioRef.current.srcObject) {
-        (localAudioRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
-        localAudioRef.current.srcObject = null;
-      }
-      if (localVideoRef.current && localVideoRef.current.srcObject) {
-        (localVideoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
-        localVideoRef.current.srcObject = null;
-      }
+      await stopAllMediaTracks();
       
-      // Stop ringtone
       if (ringtoneRef.current) {
         ringtoneRef.current.pause();
         ringtoneRef.current.currentTime = 0;
       }
     } catch (error) {
-      console.error('Error cancelling call:', error);
+      // Silent error handling
     }
   };
 
@@ -664,21 +593,8 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ currentUser, chat, onBack }) =>
       setCallStartedAt(null);
       setIsMuted(false);
       
-      // Stop any local media elements
-      if (localAudioRef.current && localAudioRef.current.srcObject) {
-        (localAudioRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
-        localAudioRef.current.srcObject = null;
-      }
-      if (localVideoRef.current && localVideoRef.current.srcObject) {
-        (localVideoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
-        localVideoRef.current.srcObject = null;
-      }
-      if (remoteAudioRef.current) {
-        remoteAudioRef.current.srcObject = null;
-      }
-      if (remoteVideoRef.current) {
-        remoteVideoRef.current.srcObject = null;
-      }
+      // Stop all media tracks
+      await stopAllMediaTracks();
       
       // Stop ringtone
       if (ringtoneRef.current) {
@@ -727,23 +643,53 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ currentUser, chat, onBack }) =>
     }
   };
 
+  const stopAllMediaTracks = async () => {
+    if (localAudioRef.current && localAudioRef.current.srcObject) {
+      const stream = localAudioRef.current.srcObject as MediaStream;
+      stream.getTracks().forEach(track => track.stop());
+      localAudioRef.current.srcObject = null;
+    }
+    
+    if (localVideoRef.current && localVideoRef.current.srcObject) {
+      const stream = localVideoRef.current.srcObject as MediaStream;
+      stream.getTracks().forEach(track => track.stop());
+      localVideoRef.current.srcObject = null;
+    }
+    
+    if (remoteAudioRef.current && remoteAudioRef.current.srcObject) {
+      const stream = remoteAudioRef.current.srcObject as MediaStream;
+      stream.getTracks().forEach(track => track.stop());
+      remoteAudioRef.current.srcObject = null;
+    }
+    
+    if (remoteVideoRef.current && remoteVideoRef.current.srcObject) {
+      const stream = remoteVideoRef.current.srcObject as MediaStream;
+      stream.getTracks().forEach(track => track.stop());
+      remoteVideoRef.current.srcObject = null;
+    }
+  };
+
   // Update call duration every second when active
   useEffect(() => {
     if (callStatus !== 'active' || !callStartedAt) {
       setCallDuration('00:00');
       return;
     }
+    
     const interval = setInterval(() => {
       const elapsed = Math.floor((Date.now() - callStartedAt) / 1000);
       const mm = String(Math.floor(elapsed / 60)).padStart(2, '0');
       const ss = String(elapsed % 60).padStart(2, '0');
       setCallDuration(`${mm}:${ss}`);
     }, 1000);
+    
     return () => clearInterval(interval);
   }, [callStatus, callStartedAt]);
 
   useEffect(() => {
-    return () => { void handleHangup(); };
+    return () => { 
+      void handleHangup(); 
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   
@@ -791,35 +737,7 @@ const ChatScreen: React.FC<ChatScreenProps> = ({ currentUser, chat, onBack }) =>
               >
                 <Icon name="video" className="w-6 h-6 text-gray-600 dark:text-gray-300" />
               </button>
-              {/* Debug permission test button - remove in production */}
-              <button
-                onClick={async () => {
-                  console.log('=== PERMISSION DEBUG TEST ===');
-                  console.log('Secure context:', window.isSecureContext);
-                  console.log('Protocol:', window.location.protocol);
-                  console.log('Host:', window.location.host);
-                  console.log('getUserMedia available:', !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia));
-                  
-                  const audioResult = await checkAndRequestPermissions('audio');
-                  const videoResult = await checkAndRequestPermissions('video');
-                  
-                  const debugInfo = `=== DEBUG INFO ===
-Secure Context: ${window.isSecureContext}
-Protocol: ${window.location.protocol}
-Host: ${window.location.host}
-getUserMedia: ${!!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)}
 
-Audio: ${audioResult.success ? 'OK' : audioResult.error}
-Video: ${videoResult.success ? 'OK' : videoResult.error}`;
-                  
-                  console.log(debugInfo);
-                  alert(debugInfo);
-                }}
-                className="p-1 rounded bg-blue-500 text-white text-xs"
-                title="Debug permissions"
-              >
-                🔍
-              </button>
             </>
           )}
           {callStatus === 'ringing' && isIncoming && (

@@ -28,41 +28,26 @@ export const testChatAccess = async (chatId: string, userId: string) => {
     const chatSnap = await getDoc(chatRef);
 
     if (!chatSnap.exists()) {
-      console.error('Chat document does not exist:', chatId);
       return { hasAccess: false, error: 'Chat not found' };
     }
 
     const chatData = chatSnap.data();
-    console.log('Chat document exists with data:', chatData);
-    console.log('Chat participants field:', chatData.participants);
-    console.log('Chat participants type:', typeof chatData.participants);
-    console.log('Is participants an array:', Array.isArray(chatData.participants));
-    console.log('Current user ID:', userId);
-    console.log('User ID type:', typeof userId);
 
     if (!chatData.participants) {
-      console.error('Chat participants field is missing');
       return { hasAccess: false, error: 'Participants field missing' };
     }
 
     if (!Array.isArray(chatData.participants)) {
-      console.error('Chat participants field is not an array:', chatData.participants);
       return { hasAccess: false, error: 'Participants field is not an array' };
     }
 
     // Check if the user ID is in the participants array
     const isParticipant = chatData.participants.includes(userId);
-    console.log('Is user participant:', isParticipant);
-    console.log('Participants array contents:', chatData.participants);
-    console.log('User ID in participants:', userId);
 
     // Also check if there might be a type mismatch
     const stringParticipants = chatData.participants.map(p => String(p));
     const stringUserId = String(userId);
     const isParticipantString = stringParticipants.includes(stringUserId);
-    console.log('String comparison - Is user participant:', isParticipantString);
-    console.log('String participants:', stringParticipants);
-    console.log('String user ID:', stringUserId);
 
     return {
       hasAccess: isParticipant || isParticipantString,
@@ -70,7 +55,6 @@ export const testChatAccess = async (chatId: string, userId: string) => {
       chatData
     };
   } catch (error) {
-    console.error('Error testing chat access:', error);
     return { hasAccess: false, error: error.message };
   }
 };
@@ -87,17 +71,13 @@ export const startCall = async (
   const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
 
   try {
-    // Debug logging
-    console.log('Starting call with:', { chatId, callerUid, calleeUid, callType });
-    console.log('Current user UID:', callerUid);
-    
-    // Add connection state change logging
+    // Connection state monitoring
     pc.onconnectionstatechange = () => {
-      console.log('Caller connection state changed:', pc.connectionState);
+      // Connection state monitoring
     };
     
     pc.oniceconnectionstatechange = () => {
-      console.log('Caller ICE connection state:', pc.iceConnectionState);
+      // ICE connection state monitoring
     };
 
     // Test chat access first
@@ -106,12 +86,16 @@ export const startCall = async (
       throw new Error(`Chat access denied: ${accessTest.error}`);
     }
 
-    // Media
-    const mediaConstraints = callType === 'video'
-      ? { audio: true, video: true }
-      : { audio: true };
+    // Media - only request audio initially, video will be requested later if needed
+    const mediaConstraints = { audio: true };
+    
     const localStream = await navigator.mediaDevices.getUserMedia(mediaConstraints);
     localStream.getTracks().forEach((t) => pc.addTrack(t, localStream));
+
+    // Set up track handler immediately
+    pc.ontrack = (event) => {
+      onRemoteTrack(event.streams[0]);
+    };
 
     // Create offer
     const offer = await pc.createOffer();
@@ -119,14 +103,16 @@ export const startCall = async (
 
     // Store offer in Firestore
     const callRef = doc(db, 'chats', chatId, 'call', 'current');
-    await setDoc(callRef, {
+    const callData = {
       offer: offer.sdp,
       callerUid,
       calleeUid,
       callType,
       status: 'ringing',
       timestamp: serverTimestamp()
-    });
+    };
+    
+    await setDoc(callRef, callData);
 
     // Listen for answer and ICE candidates
     const unsubscribe = onSnapshot(callRef, async (doc) => {
@@ -135,34 +121,19 @@ export const startCall = async (
       const data = doc.data();
       if (data.answer && data.status === 'answered') {
         try {
-          // Only set remote description if we haven't already and we're in the right state
           if (pc.remoteDescription === null && pc.signalingState === 'have-local-offer') {
-            console.log('Setting remote description (answer) for caller');
             await pc.setRemoteDescription(new RTCSessionDescription({
               type: 'answer',
               sdp: data.answer
             }));
-            
-            // Get remote stream
-            pc.ontrack = (event) => {
-              console.log('Caller received remote track');
-              onRemoteTrack(event.streams[0]);
-            };
-          } else {
-            console.log('Skipping remote description set - already set or wrong state:', {
-              hasRemoteDesc: pc.remoteDescription !== null,
-              signalingState: pc.signalingState
-            });
           }
         } catch (error) {
-          console.error('Error setting remote description:', error);
+          // Silent error handling
         }
       }
       
-      // Handle incoming ICE candidates
       if (data.iceCandidate && data.iceCandidate.candidate) {
         try {
-          // Only add ICE candidates if we have a remote description
           if (pc.remoteDescription) {
             const iceCandidate = new RTCIceCandidate({
               candidate: data.iceCandidate.candidate,
@@ -172,8 +143,13 @@ export const startCall = async (
             await pc.addIceCandidate(iceCandidate);
           }
         } catch (error) {
-          console.error('Error adding ICE candidate:', error);
+          // Silent error handling
         }
+      }
+      
+      // Handle call cancellation
+      if (data.status === 'cancelled') {
+        await cleanup();
       }
     });
 
@@ -214,7 +190,6 @@ export const startCall = async (
     };
 
   } catch (error) {
-    console.error('Failed to start call:', error);
     pc.close();
     throw error;
   }
@@ -230,20 +205,23 @@ export const answerCall = async (
   const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
 
   try {
-    console.log('Answering call for chat:', chatId);
-    
-    // Add connection state change logging
+    // Connection state monitoring
     pc.onconnectionstatechange = () => {
-      console.log('Callee connection state changed:', pc.connectionState);
+      // Connection state monitoring
     };
     
     pc.oniceconnectionstatechange = () => {
-      console.log('Callee ICE connection state:', pc.iceConnectionState);
+      // ICE connection state monitoring
     };
 
-    // Get media stream
-    const localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+    // Get media stream - only request audio initially, video will be requested later if needed
+    const localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     localStream.getTracks().forEach((t) => pc.addTrack(t, localStream));
+
+    // Set up track handler immediately
+    pc.ontrack = (event) => {
+      onRemoteTrack(event.streams[0]);
+    };
 
     // Listen for offer and ICE candidates
     const callRef = doc(db, 'chats', chatId, 'call', 'current');
@@ -253,46 +231,28 @@ export const answerCall = async (
       const data = doc.data();
       if (data.offer && data.status === 'ringing') {
         try {
-          // Only set remote description if we haven't already and we're in the right state
           if (pc.remoteDescription === null && pc.signalingState === 'stable') {
-            console.log('Setting remote description (offer) for callee');
-            // Set remote description (offer)
             await pc.setRemoteDescription(new RTCSessionDescription({
               type: 'offer',
               sdp: data.offer
             }));
 
-            // Create answer
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
 
-            // Store answer in Firestore
             await setDoc(callRef, {
               answer: answer.sdp,
               status: 'answered',
               timestamp: serverTimestamp()
             }, { merge: true });
-
-            // Get remote stream
-            pc.ontrack = (event) => {
-              console.log('Callee received remote track');
-              onRemoteTrack(event.streams[0]);
-            };
-          } else {
-            console.log('Skipping remote description set - already set or wrong state:', {
-              hasRemoteDesc: pc.remoteDescription !== null,
-              signalingState: pc.signalingState
-            });
           }
         } catch (error) {
-          console.error('Error handling offer:', error);
+          // Silent error handling
         }
       }
       
-      // Handle incoming ICE candidates
       if (data.iceCandidate && data.iceCandidate.candidate) {
         try {
-          // Only add ICE candidates if we have a remote description
           if (pc.remoteDescription) {
             const iceCandidate = new RTCIceCandidate({
               candidate: data.iceCandidate.candidate,
@@ -302,8 +262,13 @@ export const answerCall = async (
             await pc.addIceCandidate(iceCandidate);
           }
         } catch (error) {
-          console.error('Error adding ICE candidate:', error);
+          // Silent error handling
         }
+      }
+      
+      // Handle call cancellation
+      if (data.status === 'cancelled') {
+        await cleanup();
       }
     });
 
@@ -344,7 +309,6 @@ export const answerCall = async (
     };
 
   } catch (error) {
-    console.error('Failed to answer call:', error);
     pc.close();
     throw error;
   }
@@ -366,9 +330,9 @@ export const endCall = async (chatId: string): Promise<void> => {
     
     // Now delete the call document
     await deleteDoc(callRef);
-    console.log('Call ended and cleaned up');
+
   } catch (error) {
-    console.error('Error ending call:', error);
+    // Silent error handling
   }
 };
 
@@ -380,18 +344,31 @@ export const listenForIncomingCall = (
   onCallCancelled?: () => void
 ) => {
   const callRef = doc(modularDb, 'chats', chatId, 'call', 'current');
+  let lastNotifiedStatus: string | null = null;
   
   return onSnapshot(callRef, (doc) => {
-    if (!doc.exists()) return;
+    if (!doc.exists()) {
+      // Reset last status when document doesn't exist
+      lastNotifiedStatus = null;
+      return;
+    }
     
     const data = doc.data();
+    const currentStatus = `${data.status}-${data.calleeUid}`;
+    
+    // Only trigger callbacks if the status has actually changed
+    if (lastNotifiedStatus === currentStatus) {
+      return;
+    }
+    
+    lastNotifiedStatus = currentStatus;
+    
     if (data.calleeUid === userId && data.status === 'ringing') {
       onIncomingCall({ callType: data.callType });
     }
     
     // Handle call cancellation
     if (data.status === 'cancelled' && onCallCancelled) {
-      console.log('Incoming call cancelled');
       onCallCancelled();
     }
   });
@@ -404,19 +381,36 @@ export const onCallStatusChange = (
   onCallEnded?: () => void
 ) => {
   const callRef = doc(modularDb, 'chats', chatId, 'call', 'current');
+  let lastStatus: string | null = null;
+  let lastCallId: string | null = null;
   
   return onSnapshot(callRef, (doc) => {
     if (doc.exists()) {
       const data = doc.data();
+      const currentCallId = `${data.callerUid}-${data.calleeUid}-${data.timestamp?.seconds || Date.now()}`;
+      const currentStatus = data.status;
+      
+      // Only trigger if this is actually a new call or status change
+      if (lastCallId === currentCallId && lastStatus === currentStatus) {
+        return;
+      }
+      
+      lastCallId = currentCallId;
+      lastStatus = currentStatus;
+      
       onStatusChange(data);
       
       // If call status is 'ended', trigger cleanup callback
       if (data.status === 'ended' && onCallEnded) {
-        console.log('Call ended detected, triggering cleanup');
         onCallEnded();
       }
     } else {
-      onStatusChange(null);
+      // Only call onStatusChange(null) if we previously had a status
+      if (lastStatus !== null) {
+        lastStatus = null;
+        lastCallId = null;
+        onStatusChange(null);
+      }
     }
   });
 };
@@ -438,9 +432,9 @@ export const logMissedCall = async (
       status: 'missed',
       timestamp: serverTimestamp()
     });
-    console.log('Missed call logged');
+
   } catch (error) {
-    console.error('Error logging missed call:', error);
+    // Silent error handling
   }
 };
 
@@ -461,11 +455,13 @@ export const logDeclinedCall = async (
       status: 'declined',
       timestamp: serverTimestamp()
     });
-    console.log('Declined call logged');
+
   } catch (error) {
-    console.error('Error logging declined call:', error);
+    // Silent error handling
   }
 };
+
+
 
 // Cancel a call (for caller to cancel before it's answered)
 export const cancelCall = async (chatId: string): Promise<void> => {
@@ -483,9 +479,31 @@ export const cancelCall = async (chatId: string): Promise<void> => {
     
     // Now delete the call document
     await deleteDoc(callRef);
-    console.log('Call cancelled and cleaned up');
+
   } catch (error) {
-    console.error('Error cancelling call:', error);
+    // Silent error handling
+  }
+};
+
+// Clean up any existing call documents for a chat (useful when opening a chat)
+export const cleanupExistingCall = async (chatId: string): Promise<void> => {
+  try {
+    const callRef = doc(modularDb, 'chats', chatId, 'call', 'current');
+    const callDoc = await getDoc(callRef);
+    
+    if (callDoc.exists()) {
+      const data = callDoc.data();
+      // Only clean up if the call is old (more than 5 minutes)
+      const now = Date.now();
+      const callTime = data.timestamp?.toMillis() || 0;
+      const fiveMinutesAgo = now - (5 * 60 * 1000);
+      
+      if (callTime < fiveMinutesAgo) {
+        await deleteDoc(callRef);
+      }
+    }
+  } catch (error) {
+    // Silently ignore cleanup errors
   }
 };
 
